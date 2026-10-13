@@ -474,8 +474,8 @@ h1 {
 }
 .card.repo { contain-intrinsic-size: auto 260px; }
 .grid.list .card { contain-intrinsic-size: auto 130px; }
-.more { display: flex; justify-content: center; margin: -22px 0 48px; }
-.more span { color: var(--dim); }
+.load-more { display: flex; justify-content: center; margin: -22px 0 48px; }
+.load-more span { color: var(--dim); }
 .card::before {
   content: '';
   position: absolute;

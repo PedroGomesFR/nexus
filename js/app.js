@@ -892,7 +892,7 @@
           <span class="stars" title="${it.stars} étoiles">${icon('star')}${compact(it.stars)}</span>
           <span title="${it.forks} forks">${icon('fork')}${compact(it.forks)}</span>
           ${it.language ? `<span class="lang-dot" style="--h:${hue(it.language)}">${esc(it.language)}</span>` : ''}
-          <span class="push" title="Dernière modification du code">${icon('clock')}${timeTag(it.date)}</span>
+          <span class="push" title="Dernière modification du code">${icon('clock')}${timeTag(it.date, true)}</span>
           ${favBtn(it)}
         </div>
       </div>
@@ -960,7 +960,7 @@
 
   /** Bouton « Afficher plus » ; il se déclenche aussi tout seul en approchant du bas (voir setupReveal). */
   const moreHTML = (left) => (left > 0
-    ? `<div id="more" class="more"><button type="button" class="btn ghost" data-act="more">${icon('plus')}Afficher plus <span>(${left} restant${left > 1 ? 's' : ''})</span></button></div>`
+    ? `<div id="more" class="load-more"><button type="button" class="btn ghost" data-act="more">${icon('plus')}Afficher plus <span>(${left} restant${left > 1 ? 's' : ''})</span></button></div>`
     : '');
 
   function favoritesHTML() {
