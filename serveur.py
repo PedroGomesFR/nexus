@@ -276,7 +276,7 @@ class Handler(SimpleHTTPRequestHandler):
         "": "text/plain; charset=utf-8",  # LICENSE
     }
     # Fichiers publics en plus de index.html, css/ et js/ : le site est open source.
-    PUBLIC_FILES = ("/serveur.py", "/LICENSE", "/LISEZMOI.md")
+    PUBLIC_FILES = ("/serveur.py", "/LICENSE", "/README.md")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
