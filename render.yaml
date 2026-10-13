@@ -1,0 +1,11 @@
+# Déploiement sur Render (https://render.com) : New + > Blueprint, puis choisir ce dépôt.
+# serveur.py n'a aucune dépendance : pas de requirements.txt, rien à installer.
+services:
+  - type: web
+    name: nexus-veille
+    runtime: python
+    plan: free
+    buildCommand: python --version
+    startCommand: python serveur.py
+    healthCheckPath: /api/ping
+    autoDeploy: true
