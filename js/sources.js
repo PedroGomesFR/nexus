@@ -14,6 +14,10 @@
  *   tz      fuseau réel quand le flux annonce son heure locale comme du GMT (ex. 'Europe/Paris')
  */
 window.NEXUS = (() => {
+  // Informations affichées dans l'onglet « À propos ».
+  // repo : adresse du dépôt GitHub une fois créé (ex. 'https://github.com/vous/nexus-veille'), vide sinon.
+  const PROJECT = { version: '1.1', license: 'MIT', repo: '' };
+
   const TYPES = {
     officiel: { label: 'Officiel', hint: "Publié directement par l'organisation concernée : laboratoire, éditeur, agence d'État." },
     presse: { label: 'Presse', hint: 'Rédaction professionnelle, avec ligne éditoriale et corrections publiques.' },
@@ -110,5 +114,5 @@ window.NEXUS = (() => {
     { id: 'krebs', cat: 'cyber', name: 'Krebs on Security', site: 'https://krebsonsecurity.com/', url: 'https://krebsonsecurity.com/feed/', type: 'expert', lang: 'en' },
   ];
 
-  return { TYPES, CATEGORIES, SOURCES };
+  return { PROJECT, TYPES, CATEGORIES, SOURCES };
 })();

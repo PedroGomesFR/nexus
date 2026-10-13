@@ -42,6 +42,8 @@ USER_AGENT = (
 TIMEOUT = 20
 MAX_BYTES = 10 * 1024 * 1024
 FRESH_FOR = 20  # secondes : en dessous, on ressert la copie en cache sans recontacter la source
+# Sources a quota serre (GitHub : 10 recherches/min sans jeton) : cache partage plus long entre visiteurs.
+FRESH_FOR_HOST = {"api.github.com": 600, "www.reddit.com": 600}
 CACHE_MAX = 400  # nombre d'URL gardees en memoire
 RATE_LIMIT = 60  # en ligne : requetes par minute et par visiteur vers des sources perso
 FEED_TYPES = ("application/rss+xml", "application/atom+xml", "application/rdf+xml")
@@ -140,7 +142,7 @@ def fetch(url, client="local"):
     now = time.time()
     with _lock:
         cached = _cache.get(url)
-    if cached and now - cached["at"] < FRESH_FOR:
+    if cached and now - cached["at"] < FRESH_FOR_HOST.get(hostname, FRESH_FOR):
         return cached, "hit"
     if not trusted and over_limit(client):
         raise RelayError(429, "Trop de requetes vers des sources perso : patientez une minute")
@@ -269,7 +271,12 @@ class Handler(SimpleHTTPRequestHandler):
         ".svg": "image/svg+xml",
         ".png": "image/png",
         ".ico": "image/x-icon",
+        ".py": "text/plain; charset=utf-8",  # code affiche, pas telecharge (page « A propos »)
+        ".md": "text/plain; charset=utf-8",
+        "": "text/plain; charset=utf-8",  # LICENSE
     }
+    # Fichiers publics en plus de index.html, css/ et js/ : le site est open source.
+    PUBLIC_FILES = ("/serveur.py", "/LICENSE", "/LISEZMOI.md")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
@@ -300,8 +307,8 @@ class Handler(SimpleHTTPRequestHandler):
             self.proxy(parse_qs(route.query).get("url", [""])[0])
         elif route.path == "/api/discover":
             self.discover(parse_qs(route.query).get("url", [""])[0])
-        elif route.path in ("/", "/index.html") or route.path.startswith(("/css/", "/js/")):
-            super().do_GET()  # seul le site est servi, pas le reste du dossier
+        elif route.path in ("/", "/index.html", *self.PUBLIC_FILES) or route.path.startswith(("/css/", "/js/")):
+            super().do_GET()  # seul le site est servi, pas le reste du dossier (.git, render.yaml...)
         else:
             self.send_error(404, "Not found")
 

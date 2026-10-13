@@ -1,6 +1,7 @@
 # NEXUS — veille tech en temps réel
 
-Site de veille en HTML / CSS / JavaScript pur (ni Node, ni React, rien à compiler).
+L'actualité tech au même endroit, **sans compte, gratuite et open source** (licence MIT, voir `LICENSE`).
+Site en HTML / CSS / JavaScript pur (ni Node, ni React, rien à compiler).
 
 | Onglet | Contenu |
 |---|---|
@@ -11,12 +12,19 @@ Site de veille en HTML / CSS / JavaScript pur (ni Node, ni React, rien à compil
 | Informatique | Hacker News, Ars Technica, The Verge, LWN, Tom's Hardware, Next, Numerama, 01net, ZDNet, Korben |
 | Cybersécurité | CERT-FR (ANSSI), NCSC, BleepingComputer, The Hacker News, ZATAZ, Krebs on Security |
 | Favoris | Les articles et projets que vous avez enregistrés |
-| Sources | Chaque source, son type de fiabilité et son état en direct, et l'ajout de vos propres sources |
+| Sources | Chaque source, son type de fiabilité et son état en direct ; retrait des sources du catalogue et ajout des vôtres |
+| À propos | Le but du site, son fonctionnement, ses données, son code source |
 
 ## Favoris
 
 Cliquez sur l'icône **signet** en bas d'un article ou d'un projet pour l'enregistrer.
 Il reste dans l'onglet **Favoris** même quand il disparaît des flux. Cliquez à nouveau pour le retirer : le message qui apparaît permet d'annuler.
+
+## Retirer des sources du catalogue
+
+Toutes les sources du catalogue sont actives par défaut. Dans l'onglet **Sources**, le bouton **Retirer** d'une source la masque partout, et le site arrête de l'interroger.
+**Rétablir** la remet, et **Tout rétablir** remet tout le catalogue d'un coup.
+Le lien **Gérer** dans les puces d'une rubrique mène à cette page.
 
 ## Sources perso
 
@@ -31,7 +39,7 @@ Onglet **Sources**, bouton **Ajouter une source**. Vous pouvez aussi cliquer sur
 
 Les sources perso portent le badge **Perso** : leur fiabilité n'a pas été vérifiée. Pour en supprimer une, utilisez l'icône corbeille dans l'onglet Sources.
 
-**Sauvegarde :** favoris et sources perso sont enregistrés dans le navigateur.
+**Sauvegarde :** favoris, sources perso et sources retirées sont enregistrés dans le navigateur.
 **Exporter** télécharge un fichier JSON, et **Importer** le recharge, par exemple sur un autre navigateur, un téléphone, ou après l'hébergement sur Render.
 
 ## Lancer
@@ -73,8 +81,8 @@ Chaque `git push` redéploie le site automatiquement.
 
 - Bouton rond en haut à droite : rafraîchir maintenant. L'anneau se remplit jusqu'au prochain rafraîchissement automatique.
 - Interrupteur **Auto** et menu de fréquence : 30 s, 1 min (par défaut), 2, 5 ou 15 min.
-- Raccourcis clavier : `R` rafraîchir, `A` auto, `/` rechercher, `1` à `8` changer d'onglet.
-- Cliquez sur une puce de source pour la masquer ou l'afficher. Les filtres FR/EN, période et type de source se trouvent dans la barre d'outils.
+- Raccourcis clavier : `R` rafraîchir, `A` auto, `/` rechercher, `1` à `9` changer d'onglet.
+- Cliquez sur une puce de source pour la masquer ou l'afficher dans la rubrique. Pour la retirer complètement, passez par l'onglet Sources. Les filtres FR/EN, période et type de source se trouvent dans la barre d'outils.
 - Les nouveaux articles sont marqués « NOUVEAU » pendant 30 minutes. Un compteur s'affiche sur l'onglet concerné.
 - Sur les articles en anglais, **Traduire** ouvre la version traduite en français.
 
@@ -82,5 +90,7 @@ Chaque `git push` redéploie le site automatiquement.
 
 Tout se trouve dans `js/sources.js`. Copiez une ligne existante, changez `id`, `name`, `url`, `cat`, `type` et `lang`, puis rechargez la page.
 Le format de chaque champ est décrit en tête du fichier.
+
+Une fois le dépôt GitHub créé, indiquez son adresse dans `PROJECT.repo`, en tête de `js/sources.js` : elle apparaîtra dans l'onglet **À propos**.
 
 Les sources limitées en requêtes (GitHub, Reddit) ne sont interrogées que toutes les 10 à 15 minutes, quel que soit le réglage du rafraîchissement automatique.

@@ -9,14 +9,15 @@
 (() => {
   'use strict';
 
-  const { TYPES, CATEGORIES, SOURCES } = window.NEXUS;
+  const { PROJECT = {}, TYPES, CATEGORIES, SOURCES } = window.NEXUS;
   const SRC = Object.fromEntries(SOURCES.map((s) => [s.id, s]));
   const CAT = Object.fromEntries(CATEGORIES.map((c) => [c.id, c]));
   const TABS = [
     { id: 'radar', label: 'Radar', long: 'Radar', icon: 'radar', color: '#00e5ff', about: 'Les derniers titres de chaque rubrique, en un coup d’œil.' },
     ...CATEGORIES,
     { id: 'favoris', label: 'Favoris', long: 'Favoris', icon: 'bookmark', color: '#ffd34d', about: 'Vos articles et projets enregistrés. Ils restent ici même quand ils disparaissent des flux.' },
-    { id: 'sources', label: 'Sources', long: 'Sources & fiabilité', icon: 'list', color: '#a5b4fc', about: 'D’où vient chaque information, son niveau de fiabilité et son état en direct. Ajoutez aussi vos propres sources.' },
+    { id: 'sources', label: 'Sources', long: 'Sources & fiabilité', icon: 'list', color: '#a5b4fc', about: 'D’où vient chaque information, son niveau de fiabilité et son état en direct. Retirez celles qui ne vous intéressent pas, ajoutez les vôtres.' },
+    { id: 'apropos', label: 'À propos', long: 'À propos', icon: 'info', color: '#5eead4', about: 'Pourquoi NEXUS existe, comment il fonctionne et ce qu’il fait (et ne fait pas) de vos données.' },
   ];
   const TAB = Object.fromEntries(TABS.map((t) => [t.id, t]));
   const PROJECTS_ABOUT = 'Dépôts GitHub publics : le code est vérifiable. Classés par étoiles ou par activité récente.';
@@ -27,6 +28,7 @@
   const STORE_KEY = 'nexus.v1';
   const FAVS_KEY = 'nexus.favs';
   const CUSTOM_KEY = 'nexus.custom';
+  const DISABLED_KEY = 'nexus.disabled'; // sources du catalogue retirées par l'utilisateur
   const RING = 2 * Math.PI * 23;
   const CONCURRENCY = 6;
   const GENERIC_TOPICS = new Set(['decompilation', 'decomp', 'reverse-engineering', 'recompilation', 'matching-decompilation', 'game', 'games', 'api']);
@@ -46,6 +48,13 @@
     download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
     upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>',
     check: '<path d="M20 6 9 17l-5-5"/>',
+    minus: '<circle cx="12" cy="12" r="10"/><path d="M8 12h8"/>',
+    undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
+    user: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="m17 8 5 5M22 8l-5 5"/>',
+    gift: '<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7M7.5 8a2.5 2.5 0 0 1 0-5C10 3 12 8 12 8s2-5 4.5-5a2.5 2.5 0 0 1 0 5"/>',
+    code: '<path d="m16 18 6-6-6-6M8 6l-6 6 6 6"/>',
+    lock: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+    eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
     search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
     star: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
     fork: '<circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9M12 12v3"/>',
@@ -176,6 +185,12 @@
   }
   customRaw.forEach(registerSource);
 
+  // Sources du catalogue retirées : ni affichées ni interrogées (toutes actives par défaut).
+  const savedDisabled = readJSON(DISABLED_KEY, []);
+  const disabled = new Set((Array.isArray(savedDisabled) ? savedDisabled : []).filter((id) => SRC[id] && !SRC[id].custom));
+  const isActive = (s) => !disabled.has(s.id);
+  const activeSources = () => SOURCES.filter(isActive);
+
   // ───────── État ─────────
   const saved = readJSON(STORE_KEY, {}) || {};
   let favs = readJSON(FAVS_KEY, {});
@@ -196,7 +211,8 @@
     hidden: new Set((saved.hidden || []).filter((id) => SRC[id])),
     auto: saved.auto ?? true,
     interval: INTERVALS.some(([v]) => v === saved.interval) ? saved.interval : 60,
-    results: Object.fromEntries(Object.entries(saved.results || {}).filter(([id]) => SRC[id])),
+    results: Object.fromEntries(Object.entries(saved.results || {}).filter(([id]) => SRC[id] && !disabled.has(id))),
+    disabled,
     firstSeen: saved.firstSeen || {},
     lastVisit: saved.lastVisit || {},
     favs,
@@ -221,6 +237,7 @@
   const storageWarning = () => toast('Enregistrement impossible', 'Le navigateur bloque le stockage local (navigation privée ?).');
   const saveFavs = () => writeJSON(FAVS_KEY, state.favs) || storageWarning();
   const saveCustom = () => writeJSON(CUSTOM_KEY, customRaw) || storageWarning();
+  const saveDisabled = () => writeJSON(DISABLED_KEY, [...state.disabled]) || storageWarning();
 
   // ───────── Récupération des flux ─────────
   const inflight = new Map(); // une même URL partagée par plusieurs sources n'est téléchargée qu'une fois par cycle
@@ -452,9 +469,12 @@
   }
 
   async function refresh(manual = false) {
-    if (state.loading) return;
+    if (state.loading) {
+      state.again = true; // source ajoutée ou rétablie pendant un cycle : on relance juste après
+      return;
+    }
     const now = Date.now();
-    const due = SOURCES.filter((s) => now - (state.results[s.id]?.at || 0) >= (s.minAge ?? 30) * 1000 - 1500);
+    const due = activeSources().filter((s) => now - (state.results[s.id]?.at || 0) >= (s.minAge ?? 30) * 1000 - 1500);
     if (!due.length) {
       if (manual) toast('Déjà à jour', 'Toutes les sources ont été interrogées il y a moins de 30 secondes.');
       schedule();
@@ -479,9 +499,10 @@
           state.firstSeen[it.id] = baseline ? 0 : Date.now();
           if (!baseline && !it.repo) fresh.push(it);
         }
-        if (SRC[src.id]) state.results[src.id] = { items, at: Date.now(), ok: true, ms, error: warn };
+        // La source a pu être supprimée ou retirée pendant le téléchargement.
+        if (SRC[src.id] && isActive(src)) state.results[src.id] = { items, at: Date.now(), ok: true, ms, error: warn };
       } catch (err) {
-        if (SRC[src.id]) state.results[src.id] = { items: prev?.items || [], at: Date.now(), ok: false, ms: 0, error: err.message, blocked: !!err.blocked };
+        if (SRC[src.id] && isActive(src)) state.results[src.id] = { items: prev?.items || [], at: Date.now(), ok: false, ms: 0, error: err.message, blocked: !!err.blocked };
       }
       state.pending.delete(src.id);
       scheduleRender();
@@ -498,6 +519,10 @@
     updateChrome();
     if (fresh.length) notifyNew(fresh.filter((it) => SRC[it.src]));
     else if (manual) toast('Synchronisé', 'Aucun nouvel article depuis la dernière vérification.');
+    if (state.again) {
+      state.again = false;
+      setTimeout(refresh, 50);
+    }
   }
 
   function pruneSeen() {
@@ -511,8 +536,8 @@
     const seen = new Set();
     return items.filter((it) => !seen.has(it.id) && seen.add(it.id));
   };
-  const newsSources = (catId) => SOURCES.filter((s) => s.cat === catId && s.kind !== 'github');
-  const projectSources = (catId) => SOURCES.filter((s) => s.cat === catId && s.kind === 'github');
+  const newsSources = (catId) => activeSources().filter((s) => s.cat === catId && s.kind !== 'github');
+  const projectSources = (catId) => activeSources().filter((s) => s.cat === catId && s.kind === 'github');
   const newsItems = (catId) => dedupe(newsSources(catId).flatMap((s) => state.results[s.id]?.items || [])).sort((a, b) => (b.date || 0) - (a.date || 0));
   const isNew = (it) => {
     const t = state.firstSeen[it.id];
@@ -612,7 +637,7 @@
   }
 
   function exportData() {
-    const data = { app: 'nexus', version: 1, exportedAt: new Date().toISOString(), favorites: Object.values(state.favs), sources: customRaw };
+    const data = { app: 'nexus', version: 1, exportedAt: new Date().toISOString(), favorites: Object.values(state.favs), sources: customRaw, disabled: [...state.disabled] };
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
     a.download = `nexus-sauvegarde-${new Date().toISOString().slice(0, 10)}.json`;
@@ -620,7 +645,7 @@
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-    toast('Sauvegarde exportée', `${data.favorites.length} favori(s) et ${data.sources.length} source(s) perso dans le fichier téléchargé.`);
+    toast('Sauvegarde exportée', `${data.favorites.length} favori(s), ${data.sources.length} source(s) perso et ${data.disabled.length} source(s) retirée(s) dans le fichier téléchargé.`);
   }
 
   async function importData(file) {
@@ -645,9 +670,17 @@
         registerSource(raw);
         ns++;
       }
+      let nd = 0;
+      for (const id of Array.isArray(data.disabled) ? data.disabled : []) {
+        if (!SRC[id] || SRC[id].custom || state.disabled.has(id)) continue;
+        state.disabled.add(id);
+        delete state.results[id];
+        nd++;
+      }
       saveFavs();
       saveCustom();
-      toast('Import terminé', `${nf} favori(s) et ${ns} source(s) ajoutés.`);
+      saveDisabled();
+      toast('Import terminé', `${nf} favori(s), ${ns} source(s) perso et ${nd} source(s) retirée(s) ajoutés.`);
       renderHead();
       renderBody();
       updateChrome();
@@ -697,7 +730,12 @@
         }
         site = `${new URL(input).origin}/`;
       }
-      if (SOURCES.some((s) => [].concat(s.url).includes(url))) throw new Error('Cette source est déjà dans votre liste.');
+      const existing = SOURCES.find((s) => [].concat(s.url).includes(url));
+      if (existing) {
+        throw new Error(isActive(existing)
+          ? `Cette source est déjà dans votre liste (${existing.name}).`
+          : `${existing.name} fait partie du catalogue mais vous l’avez retirée : cliquez sur « Rétablir » plus bas.`);
+      }
       const text = await getText(url, false);
       const items = (kind === 'hn' ? parseHN(text) : parseFeed(text, url)).filter((it) => it.title && it.link);
       const re = keywordsRe(data.keywords);
@@ -746,6 +784,33 @@
     renderBody();
     updateChrome();
     toast('Source supprimée', src.name);
+  }
+
+  /** Retire (ou rétablit) des sources du catalogue : une source retirée n'est ni affichée ni interrogée. */
+  function setEnabled(ids, enabled) {
+    const list = ids.map((id) => SRC[id]).filter((s) => s && !s.custom && isActive(s) !== enabled);
+    if (!list.length) return;
+    for (const s of list) {
+      if (enabled) {
+        state.disabled.delete(s.id);
+      } else {
+        state.disabled.add(s.id);
+        delete state.results[s.id];
+        state.hidden.delete(s.id);
+      }
+    }
+    saveDisabled();
+    pruneSeen();
+    persist();
+    renderBody();
+    updateChrome();
+    const label = list.length === 1 ? `« ${list[0].name} »` : `${list.length} sources`;
+    if (enabled) {
+      toast('Source rétablie', `${label} : chargement en cours.`);
+      refresh();
+    } else {
+      toast('Source retirée', `${label} n’est plus affichée ni interrogée. Cliquez ici pour annuler.`, () => setEnabled(list.map((s) => s.id), true));
+    }
   }
 
   // ───────── Rendu ─────────
@@ -816,6 +881,10 @@
   const skeletons = (n) => `<div class="grid">${'<div class="sk"></div>'.repeat(n)}</div>`;
 
   function emptyHTML(srcs, total) {
+    if (!srcs.length && !total) {
+      return `<div class="empty">${icon('list')}<b>Aucune source active</b><p>Toutes les sources de cette rubrique ont été retirées.</p>
+        <a class="btn" href="#sources">Gérer les sources</a></div>`;
+    }
     if (srcs.some((s) => state.pending.has(s.id)) && !total) return skeletons(6);
     if (total) {
       return `<div class="empty">${icon('filter')}<b>Aucun résultat</b><p>Aucun élément ne correspond aux filtres actuels.</p>
@@ -840,6 +909,7 @@
     });
     if (srcs.some((s) => state.hidden.has(s.id))) chips.push('<button class="chip reset" data-act="chips-reset">Tout afficher</button>');
     chips.push(`<button class="chip add" data-act="add-source" data-v="${catId}" title="Ajouter votre propre source à cette rubrique">${icon('plus')}Ajouter une source</button>`);
+    chips.push(`<a class="chip add" href="#sources" title="Retirer ou rétablir des sources du catalogue">${icon('list')}Gérer</a>`);
     return `<div class="chips">${chips.join('')}</div>`;
   }
 
@@ -882,12 +952,13 @@
     const now = Date.now();
     const perCat = CATEGORIES.map((c) => ({ c, items: newsItems(c.id) }));
     const everything = dedupe(perCat.flatMap((p) => p.items));
-    const repos = dedupe(SOURCES.filter((s) => s.kind === 'github').flatMap((s) => state.results[s.id]?.items || []));
-    const online = SOURCES.filter((s) => state.results[s.id]?.ok).length;
+    const active = activeSources();
+    const repos = dedupe(active.filter((s) => s.kind === 'github').flatMap((s) => state.results[s.id]?.items || []));
+    const online = active.filter((s) => state.results[s.id]?.ok).length;
     const stats = [
       ['Articles des dernières 24 h', everything.filter((it) => now - it.date < 864e5).length, '#00e5ff'],
       ['Nouveaux (30 min)', everything.filter(isNew).length, '#ff2bd6'],
-      ['Sources en ligne', `${online}<small>/${SOURCES.length}</small>`, '#a3ff12'],
+      ['Sources en ligne', `${online}<small>/${active.length}</small>`, '#a3ff12'],
       ['Projets GitHub suivis', repos.length, '#ffb020'],
     ];
     const panels = perCat.map(({ c, items }) => {
@@ -897,10 +968,12 @@
         return `<a class="row${isNew(it) ? ' is-new' : ''}" href="${esc(it.link)}" target="_blank" rel="noopener noreferrer" style="--h:${hue(s.name)}">
           ${timeTag(it.date, true)}<span><span class="s">${esc(s.name)}</span><span class="t">${esc(it.title)}</span></span></a>`;
       }).join('');
-      const waiting = newsSources(c.id).some((s) => state.pending.has(s.id));
+      const srcs = newsSources(c.id);
+      const waiting = srcs.some((s) => state.pending.has(s.id));
+      const none = srcs.length ? 'Aucun article pour le moment.' : 'Aucune source active : <a href="#sources">gérer les sources</a>.';
       return `<section class="panel" style="--c:${c.color}">
         <header class="panel-h">${icon(c.icon)}<h2>${esc(c.label)}</h2>${n ? `<b class="badge">+${n}</b>` : ''}<a class="more" href="#${c.id}">Tout voir →</a></header>
-        ${rows || (waiting ? '<div class="sk-row"></div>'.repeat(5) : '<div class="empty" style="margin:16px;padding:30px 16px"><p>Aucun article pour le moment.</p></div>')}
+        ${rows || (waiting ? '<div class="sk-row"></div>'.repeat(5) : `<div class="empty" style="margin:16px;padding:30px 16px"><p>${none}</p></div>`)}
       </section>`;
     }).join('');
     return `<div class="stats">${stats.map(([label, value, color]) => `<div class="stat" style="--sc:${color}"><b>${value}</b><span>${label}</span></div>`).join('')}</div>
@@ -910,19 +983,25 @@
   const SOURCE_LABELS = { ok: 'En ligne', err: 'Erreur', blocked: 'Bloquée (CORS)', wait: 'Chargement…', idle: 'Pas encore interrogée' };
 
   function sourceRowHTML(s) {
-    const r = state.results[s.id];
-    const st = statusOf(s);
+    const off = !isActive(s);
+    const r = off ? null : state.results[s.id];
+    const st = off ? 'idle' : statusOf(s);
     const urls = [].concat(s.url);
-    const sub = [SOURCE_LABELS[st]];
+    const sub = [off ? 'Retirée : ni affichée ni interrogée' : SOURCE_LABELS[st]];
     if (r?.at) sub.push(`interrogée ${ago(r.at)}`);
     if ((s.minAge ?? 30) >= 300) sub.push(`au plus toutes les ${Math.round(s.minAge / 60)} min`);
     if (s.include) sub.push(s.custom ? `filtre : ${s.keywords}` : 'filtrée par mots-clés');
     if (s.exclude && s.kind !== 'github') sub.push('sujets « jeux » exclus');
     const cat = CAT[s.cat];
-    return `<article class="src-item" style="--h:${hue(s.name)}">
-      <span class="dot ${st}" title="${SOURCE_LABELS[st]}"></span>
-      <div class="si-main">${extLink(s.site, esc(s.name)).replace('<a ', '<a class="si-name" ')}${typeBadge(s.type)}<span class="lang">${s.lang.toUpperCase()}</span>${s.custom ? `<span class="cat-tag" style="--c:${cat.color}">${esc(cat.label)}</span>` : ''}</div>
-      <div class="si-stats">${r ? `${r.items.length} élém.${r.ms ? ` · ${r.ms} ms` : ''}` : ''}${s.custom ? `<button class="si-del" data-act="del-source" data-v="${esc(s.id)}" title="Supprimer cette source" aria-label="Supprimer ${esc(s.name)}">${icon('trash')}</button>` : ''}</div>
+    const name = esc(s.name);
+    let action;
+    if (s.custom) action = `<button class="si-del" data-act="del-source" data-v="${esc(s.id)}" title="Supprimer cette source" aria-label="Supprimer ${name}">${icon('trash')}</button>`;
+    else if (off) action = `<button class="si-toggle restore" data-act="enable-source" data-v="${esc(s.id)}" title="Remettre cette source" aria-label="Rétablir ${name}">${icon('undo')}Rétablir</button>`;
+    else action = `<button class="si-toggle" data-act="disable-source" data-v="${esc(s.id)}" title="Ne plus afficher ni interroger cette source" aria-label="Retirer ${name}">${icon('minus')}Retirer</button>`;
+    return `<article class="src-item${off ? ' off' : ''}" style="--h:${hue(s.name)}">
+      <span class="dot ${st}" title="${off ? 'Retirée' : SOURCE_LABELS[st]}"></span>
+      <div class="si-main">${extLink(s.site, name).replace('<a ', '<a class="si-name" ')}${typeBadge(s.type)}<span class="lang">${s.lang.toUpperCase()}</span>${s.custom ? `<span class="cat-tag" style="--c:${cat.color}">${esc(cat.label)}</span>` : ''}</div>
+      <div class="si-stats">${r ? `${r.items.length} élém.${r.ms ? ` · ${r.ms} ms` : ''}` : ''}${action}</div>
       <div class="si-sub">${esc(sub.join(' · '))}${r && !r.ok ? ` · <button class="si-retry" data-act="retry" data-v="${esc(s.id)}">réessayer</button>` : ''}</div>
       ${r?.error ? `<div class="si-err">${esc(r.error)}</div>` : ''}
       <div class="si-urls">${urls.slice(0, 2).map((u) => extLink(u, esc(u))).join('')}${urls.length > 2 ? `<span class="si-sub">+ ${urls.length - 2} autre(s) requête(s)</span>` : ''}</div>
@@ -937,11 +1016,84 @@
     const mine = `<section class="src-cat" style="--c:#ffd34d"><h2>${icon('plus')}Vos sources perso (${custom.length})</h2>
       ${custom.length ? `<div class="src-list">${custom.map(sourceRowHTML).join('')}</div>` : '<p class="src-empty">Aucune pour l’instant : utilisez « Ajouter une source » ci-dessus.</p>'}</section>`;
     const legend = `<div class="legend">${Object.entries(TYPES).map(([k, t]) => `<div class="lg"><span class="type type-${k}">${esc(t.label)}</span><p>${esc(t.hint)}</p></div>`).join('')}</div>`;
+    const catalog = SOURCES.filter((s) => !s.custom);
+    const removed = catalog.filter((s) => !isActive(s)).length;
+    const bar = `<div class="catalog-bar">${icon('list')}<p><b>Catalogue :</b> ${catalog.length - removed} source${catalog.length - removed > 1 ? 's' : ''} active${catalog.length - removed > 1 ? 's' : ''} sur ${catalog.length}.
+      ${removed ? '' : 'Toutes sont actives par défaut : « Retirer » masque une source partout et arrête de l’interroger.'}</p>
+      ${removed ? `<button type="button" class="btn ghost" data-act="enable-all">${icon('undo')}Tout rétablir (${removed})</button>` : ''}</div>`;
     const groups = CATEGORIES.map((c) => {
-      const rows = SOURCES.filter((s) => s.cat === c.id && !s.custom).map(sourceRowHTML).join('');
-      return `<section class="src-cat" style="--c:${c.color}"><h2>${icon(c.icon)}${esc(c.long)}</h2><div class="src-list">${rows}</div></section>`;
+      const list = catalog.filter((s) => s.cat === c.id);
+      const off = list.filter((s) => !isActive(s)).length;
+      return `<section class="src-cat" style="--c:${c.color}"><h2>${icon(c.icon)}${esc(c.long)}<small>${list.length - off}/${list.length} actives</small></h2>
+        <div class="src-list">${list.map(sourceRowHTML).join('')}</div></section>`;
     }).join('');
-    return note + mine + legend + groups;
+    return note + mine + legend + bar + groups;
+  }
+
+  function aboutHTML() {
+    const catalog = SOURCES.filter((s) => !s.custom);
+    const solid = catalog.filter((s) => ['officiel', 'presse', 'recherche'].includes(s.type)).length;
+    const license = esc(PROJECT.license || 'MIT');
+    const pillars = [
+      ['user', 'Sans compte', 'Aucune inscription, aucun identifiant, aucune adresse e-mail. Vous arrivez, vous lisez.'],
+      ['gift', 'Gratuit', 'Pas d’abonnement, pas de publicité, pas de version premium. Chaque article renvoie vers son site d’origine (certains éditeurs ont leur propre accès payant).'],
+      ['code', 'Open source', `Tout le code est ouvert sous licence ${license} : vous pouvez le lire, le modifier et héberger votre propre NEXUS.`],
+      ['eye', 'Sources visibles', `${catalog.length} sources sélectionnées, dont ${solid} officielles, de presse ou de recherche. Chaque article affiche d’où il vient et le type de sa source.`],
+      ['lock', 'Vos données restent chez vous', 'Favoris, sources perso et réglages sont enregistrés dans votre navigateur. Aucun pisteur, aucune statistique de visite.'],
+    ];
+    const features = [
+      'L’actualité IA, informatique et cybersécurité, en français et en anglais',
+      'Les apps et jeux rétro-ingéniérés : articles et catalogue des projets GitHub',
+      'Un rafraîchissement automatique, jusqu’à toutes les 30 secondes',
+      'La recherche et des filtres par langue, date et type de source',
+      'Des favoris conservés même quand l’article disparaît des flux',
+      'Vos propres sources : un site, un flux RSS ou une recherche Hacker News',
+      'Le retrait des sources du catalogue qui ne vous intéressent pas',
+      'La traduction en un clic des articles en anglais',
+      'L’export et l’import de vos réglages pour changer d’appareil',
+    ];
+    const faq = [
+      ['Pourquoi n’y a-t-il pas de compte ?', 'Parce qu’il n’en faut pas : tout ce qui vous est propre (favoris, sources, réglages) reste dans votre navigateur. Pour le retrouver ailleurs, utilisez « Exporter » puis « Importer ».'],
+      ['NEXUS écrit-il les articles ?', 'Non. Comme un lecteur RSS, il affiche le titre, un court extrait et le lien de chaque article. Le contenu appartient à ses auteurs : cliquez pour le lire sur le site d’origine.'],
+      ['Qu’est-ce qui est chargé depuis d’autres sites ?', 'Les images des articles (depuis leurs sites), les polices de caractères (Google Fonts) et, seulement si vous cliquez sur « Traduire », Google Traduction. Rien d’autre.'],
+      ['Pourquoi un petit serveur ?', 'Les navigateurs interdisent à une page de lire directement les flux des autres sites. Le relais serveur.py les lit à sa place et garde une copie 20 secondes, sans rien enregistrer d’autre.'],
+      ['Comment changer les sources ?', 'Onglet Sources : retirez une source du catalogue ou ajoutez la vôtre. Pour modifier le catalogue de tout le monde, éditez le fichier js/sources.js.'],
+    ];
+    const files = [['js/app.js', 'l’application'], ['js/sources.js', 'le catalogue des sources'], ['css/style.css', 'le style'], ['serveur.py', 'le relais'], ['LICENSE', 'la licence']];
+    const repo = safeUrl(PROJECT.repo || '');
+    return `<div class="about">
+      <section class="about-hero">
+        <p class="kicker">// le projet</p>
+        <h2>L’actu tech, <span>sans compte</span>, gratuite et open source.</h2>
+        <p class="lead">NEXUS rassemble au même endroit les dernières infos sur l’intelligence artificielle, les applications et jeux rétro-ingéniérés, l’informatique et la cybersécurité. Les articles viennent directement de sources reconnues et se mettent à jour toutes les minutes. Il suffit d’ouvrir la page.</p>
+        <div class="about-cta"><a class="btn" href="#radar">${icon('radar')}Voir le radar</a><a class="btn ghost" href="#sources">${icon('list')}Voir les sources</a></div>
+      </section>
+      <div class="pillars">${pillars.map(([ic, title, text]) => `<div class="pillar">${icon(ic)}<h3>${title}</h3><p>${text}</p></div>`).join('')}</div>
+      <div class="about-grid">
+        <section class="about-card">
+          <h3>Comment ça marche</h3>
+          <ol class="flow">
+            <li><b>Les sources</b><span>${catalog.length} flux RSS et API publiques : laboratoires, presse, chercheurs en sécurité, GitHub, Hacker News.</span></li>
+            <li><b>Le relais</b><span><code>serveur.py</code> récupère les flux à la place du navigateur, puisque celui-ci n’a pas le droit de les lire lui-même.</span></li>
+            <li><b>Votre navigateur</b><span>Il trie, filtre et affiche les articles. Vos favoris et réglages ne quittent pas votre appareil.</span></li>
+          </ol>
+        </section>
+        <section class="about-card">
+          <h3>Ce que vous pouvez faire</h3>
+          <ul class="checks">${features.map((f) => `<li>${icon('check')}<span>${f}</span></li>`).join('')}</ul>
+        </section>
+      </div>
+      <section class="about-card">
+        <h3>Questions fréquentes</h3>
+        <div class="faq">${faq.map(([q, a]) => `<details><summary>${q}</summary><p>${a}</p></details>`).join('')}</div>
+      </section>
+      <section class="about-card">
+        <h3>${icon('code')}Code source</h3>
+        <p>NEXUS est écrit en HTML, CSS et JavaScript, sans framework, avec un relais Python sans dépendance. Il est publié sous licence ${license} : vous pouvez le réutiliser librement, y compris pour héberger votre propre version. Le code exécuté par cette page est lisible ici :</p>
+        <div class="code-links">${files.map(([file, what]) => `<a href="${file}" target="_blank" rel="noopener"><code>${file}</code><span>${what}</span></a>`).join('')}${repo ? `<a href="${esc(repo)}" target="_blank" rel="noopener noreferrer"><code>GitHub</code><span>le dépôt du projet</span></a>` : ''}</div>
+      </section>
+      <p class="about-foot">NEXUS ${esc(PROJECT.version || '')} · ${activeSources().length} sources actives · aucune donnée personnelle collectée</p>
+    </div>`;
   }
 
   function seg(act, current, options, titles = []) {
@@ -1055,6 +1207,7 @@
     if (state.tab === 'radar') html = radarHTML();
     else if (state.tab === 'sources') html = sourcesHTML();
     else if (state.tab === 'favoris') html = favoritesHTML();
+    else if (state.tab === 'apropos') html = aboutHTML();
     else if (state.sub === 'projects') html = projectsHTML(state.tab);
     else html = newsHTML(state.tab);
     if (state.tab === 'radar') updateTicker();
@@ -1098,9 +1251,10 @@
       badge.textContent = n > 99 ? '99+' : String(n);
     }
     document.title = `${total ? `(${total}) ` : ''}NEXUS · Veille tech`;
-    const online = SOURCES.filter((s) => state.results[s.id]?.ok).length;
+    const active = activeSources();
+    const online = active.filter((s) => state.results[s.id]?.ok).length;
     $('#sync').innerHTML = state.lastSync
-      ? `Synchro <b>${new Date(state.lastSync).toLocaleTimeString('fr-FR')}</b> · ${online}/${SOURCES.length} sources`
+      ? `Synchro <b>${new Date(state.lastSync).toLocaleTimeString('fr-FR')}</b> · ${online}/${active.length} sources`
       : 'Synchro —';
   }
 
@@ -1292,6 +1446,15 @@
         return;
       case 'del-source':
         deleteSource(v);
+        return;
+      case 'disable-source':
+        setEnabled([v], false);
+        return;
+      case 'enable-source':
+        setEnabled([v], true);
+        return;
+      case 'enable-all':
+        setEnabled([...state.disabled], true);
         return;
       case 'retry':
         if (state.results[v]) state.results[v].at = 0;
