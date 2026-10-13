@@ -46,6 +46,7 @@ NEXUS rassemble tout sur une seule page :
 | 🔄 **Temps réel** | Rafraîchissement automatique de 30 s à 15 min, bouton manuel, badge sur les onglets qui ont du nouveau |
 | 🔎 **Filtres** | Recherche, langue (FR / EN), période, type de source, vue cartes ou liste |
 | 🎮 **Projets GitHub** | Catalogue des décompilations de jeux et des apps / API rétro-ingéniérées, triés par étoiles ou par activité |
+| 🕹️ **Jouer** | 25 jeux rétro-ingéniérés : liens officiels pour jouer en ligne ou télécharger, ce qu'il faut fournir et comment les lancer |
 | 🔖 **Favoris** | Conservés même quand l'article disparaît des flux |
 | ➕ **Sources perso** | Ajoutez un site (son flux RSS est trouvé automatiquement), un flux RSS/Atom ou une recherche Hacker News |
 | 🧹 **Catalogue à la carte** | Retirez les sources qui ne vous intéressent pas, rétablissez-les en un clic |
@@ -57,6 +58,9 @@ NEXUS rassemble tout sur une seule page :
   <tr>
     <td width="50%"><img src="docs/jeux-projets.jpg" alt="Catalogue des jeux décompilés sur GitHub"><br><sub><b>Reverse Jeux → Projets GitHub</b> : Pokémon, Zelda, Castlevania… décompilés par leurs communautés.</sub></td>
     <td width="50%"><img src="docs/sources-perso.jpg" alt="Ajout d'une source perso avec aperçu"><br><sub><b>Sources perso</b> : collez l'adresse d'un site, NEXUS trouve son flux et montre un aperçu.</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/jouer.jpg" alt="Jeux rétro-ingéniérés jouables, avec liens officiels et instructions"><br><sub><b>Reverse Jeux → Jouer</b> : Diablo, Zelda, Tomb Raider, OpenTTD… jouables en ligne ou à télécharger, avec la marche à suivre. Aucun jeu n'est hébergé : liens officiels uniquement.</sub></td>
   </tr>
 </table>
 

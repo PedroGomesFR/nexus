@@ -474,6 +474,58 @@ h1 {
 }
 .card.repo { contain-intrinsic-size: auto 260px; }
 .grid.list .card { contain-intrinsic-size: auto 130px; }
+/* Fiches « Jouer » (Reverse Jeux) */
+.play-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 22px 0 4px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--c) 35%, transparent);
+  background: color-mix(in srgb, var(--c) 6%, transparent);
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.play-note > svg { margin-top: 3px; color: var(--c); }
+.play-note p { margin: 0; }
+.play-note b { color: var(--text); }
+.games { grid-template-columns: repeat(auto-fill, minmax(min(370px, 100%), 1fr)); align-items: start; } /* seule la fiche dépliée grandit */
+.card.game { contain-intrinsic-size: auto 420px; }
+.g-body { display: flex; flex-direction: column; gap: 11px; flex: 1; padding: 18px 18px 16px; min-width: 0; }
+.g-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.g-head h3 { margin: 0; font: 700 18px/1.25 var(--f-ui); overflow-wrap: anywhere; }
+.g-orig { margin: 4px 0 0; font: 500 11.5px var(--f-mono); letter-spacing: .04em; color: var(--muted); }
+.g-proj { margin: 0; font-size: 13.5px; color: var(--muted); }
+.g-proj b { color: var(--c); }
+.g-desc { margin: 0; font-size: 14px; line-height: 1.55; color: color-mix(in srgb, var(--text) 85%, transparent); }
+.g-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.plat { padding: 2px 8px; border-radius: 6px; border: 1px solid var(--line-2); font: 500 11px var(--f-mono); color: var(--muted); }
+.need { padding: 3px 9px; border-radius: 999px; border: 1px solid; font: 700 10.5px/1.4 var(--f-mono); letter-spacing: .08em; text-transform: uppercase; cursor: help; }
+.need-free { color: var(--lime); border-color: rgba(163, 255, 18, .4); background: rgba(163, 255, 18, .08); }
+.need-demo { color: var(--cyan); border-color: rgba(0, 229, 255, .4); background: rgba(0, 229, 255, .08); }
+.need-files { color: var(--amber); border-color: rgba(255, 176, 32, .4); background: rgba(255, 176, 32, .08); }
+.need-rom { color: #ff9fd2; border-color: rgba(255, 159, 210, .4); background: rgba(255, 159, 210, .08); }
+.g-need { margin: 0; font-size: 13px; line-height: 1.55; color: var(--muted); }
+.g-need b { color: var(--text); font-weight: 600; }
+.g-need code, .howto code { font: 600 11.5px var(--f-mono); color: var(--text); background: rgba(255, 255, 255, .07); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+.g-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; padding-top: 4px; }
+.g-actions .btn { padding: 8px 12px; font-size: 12px; }
+.g-warn { display: flex; gap: 7px; align-items: flex-start; margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--amber); }
+.g-warn svg { width: 15px; height: 15px; margin-top: 2px; flex: none; }
+.btn.play { color: #02040a; background: var(--c); box-shadow: 0 0 22px -4px var(--c); }
+.btn.play:hover { background: var(--c); filter: brightness(1.12); box-shadow: 0 0 30px -2px var(--c); }
+.btn.play svg { fill: currentColor; }
+.howto { border-top: 1px dashed var(--line); padding-top: 10px; }
+.howto summary { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; font: 600 11.5px var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--c); }
+.howto summary::-webkit-details-marker { display: none; }
+.howto summary::before { content: '▸'; transition: transform .2s; }
+.howto[open] summary::before { transform: rotate(90deg); }
+.howto ol { display: grid; gap: 7px; margin: 10px 0 0; padding-left: 20px; font-size: 13.5px; line-height: 1.55; color: var(--muted); }
+.howto[open] ol { animation: fade-up .35s cubic-bezier(.2, .8, .2, 1); }
+.subnav button svg { width: 13px; height: 13px; margin-right: 6px; vertical-align: -1px; fill: currentColor; }
+
 .load-more { display: flex; justify-content: center; margin: -22px 0 48px; }
 .load-more span { color: var(--dim); }
 .card::before {

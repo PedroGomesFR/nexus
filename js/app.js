@@ -21,6 +21,15 @@
   ];
   const TAB = Object.fromEntries(TABS.map((t) => [t.id, t]));
   const PROJECTS_ABOUT = 'Dépôts GitHub publics : le code est vérifiable. Classés par étoiles ou par activité récente.';
+  const PLAY_ABOUT = 'Les jeux rétro-ingéniérés auxquels vous pouvez jouer : en ligne, ou à télécharger depuis leur page officielle, avec la marche à suivre.';
+  const GAMES = window.NEXUS_GAMES || [];
+  const SUBS = { news: '', projects: 'projets', play: 'jouer' }; // sous-onglets et leur suffixe d'adresse (#jeux/jouer)
+  const NEEDS = {
+    free: { label: 'Rien à fournir', hint: 'Fonctionne avec des données libres ou offertes.' },
+    demo: { label: 'Démo gratuite', hint: 'Jouable avec une version de démonstration ou shareware gratuite ; le jeu complet demande vos fichiers.' },
+    files: { label: 'Vos fichiers du jeu', hint: 'Demande votre copie du jeu original (GOG, Steam ou CD).' },
+    rom: { label: 'Votre ROM', hint: 'Demande la ROM de votre propre copie du jeu.' },
+  };
   const INTERVALS = [[30, 'Toutes les 30 s'], [60, 'Chaque minute'], [120, 'Toutes les 2 min'], [300, 'Toutes les 5 min'], [900, 'Toutes les 15 min']];
   const PERIODS = { all: 'Toutes dates', day: '24 h', week: '7 jours', month: '30 jours' };
   const PERIOD_MS = { all: Infinity, day: 864e5, week: 6048e5, month: 2592e6 };
@@ -57,6 +66,8 @@
     code: '<path d="m16 18 6-6-6-6M8 6l-6 6 6 6"/>',
     lock: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
     eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+    play: '<polygon points="6 3 20 12 6 21 6 3"/>',
+    globe: '<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
     search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
     star: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
     fork: '<circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9M12 12v3"/>',
@@ -213,6 +224,7 @@
     view: saved.view === 'list' ? 'list' : 'grid',
     projSort: saved.projSort === 'recent' ? 'recent' : 'stars',
     favSort: saved.favSort === 'date' ? 'date' : 'added',
+    playFilter: 'all', // vue « Jouer » : all | online | free | own
     hidden: new Set((saved.hidden || []).filter((id) => SRC[id])),
     auto: saved.auto ?? true,
     interval: INTERVALS.some(([v]) => v === saved.interval) ? saved.interval : 60,
@@ -958,6 +970,55 @@
       ${items.length ? `<div class="grid">${items.slice(0, limit).map(repoHTML).join('')}</div>${moreHTML(items.length - limit)}` : emptyHTML(srcs, all.length)}`;
   }
 
+  // ───────── Jouer : jeux rétro-ingéniérés (js/games.js) ─────────
+  /** `texte` → <code>texte</code>, après échappement. */
+  const richText = (s) => esc(s).replace(/`([^`]+)`/g, '<code>$1</code>');
+
+  function gameHTML(g, i) {
+    const need = NEEDS[g.needs] || NEEDS.files;
+    const repos = g.code || [];
+    const links = [];
+    if (g.play) links.push(`<a class="btn play" href="${esc(safeUrl(g.play))}" target="_blank" rel="noopener noreferrer">${icon('play')}Jouer en ligne</a>`);
+    if (g.download) links.push(`<a class="btn${g.play ? ' ghost' : ''}" href="${esc(safeUrl(g.download))}" target="_blank" rel="noopener noreferrer">${icon('download')}Télécharger</a>`);
+    repos.forEach((r, k) => links.push(`<a class="btn ghost" href="https://github.com/${esc(r)}" target="_blank" rel="noopener noreferrer" title="github.com/${esc(r)}">${icon('code')}${k === 0 ? 'Code source' : esc(r.split('/')[1])}</a>`));
+    if (g.site) links.push(`<a class="btn ghost" href="${esc(safeUrl(g.site))}" target="_blank" rel="noopener noreferrer">${icon('globe')}Site officiel</a>`);
+    return `<article class="card game" data-key="game-${esc(g.id)}" style="--h:${hue(g.game)};--c:${CAT.jeux.color};--i:${Math.min(i, 18)}">
+      <div class="g-body">
+        <div class="g-head">
+          <div><h3>${esc(g.game)}</h3><p class="g-orig">${esc(g.original)}</p></div>
+          ${g.play ? '<span class="tag-live" title="Jouable directement dans le navigateur">EN LIGNE</span>' : ''}
+        </div>
+        <p class="g-proj"><b>${esc(g.project)}</b> · ${esc(g.kind)}</p>
+        <p class="g-desc">${esc(g.desc)}</p>
+        <div class="g-meta"><span class="need need-${esc(g.needs)}" title="${esc(need.hint)}">${need.label}</span>${(g.platforms || []).map((p) => `<span class="plat">${esc(p)}</span>`).join('')}</div>
+        ${g.needsText ? `<p class="g-need"><b>Ce qu’il faut :</b> ${richText(g.needsText)}</p>` : ''}
+        <div class="g-actions">${links.join('')}</div>
+        ${g.warn ? `<p class="g-warn">${icon('alert')}${richText(g.warn)}</p>` : ''}
+        <details class="howto"><summary>Comment le lancer</summary><ol>${(g.steps || []).map((s) => `<li>${richText(s)}</li>`).join('')}</ol></details>
+      </div>
+    </article>`;
+  }
+
+  function playHTML() {
+    const tokens = norm(state.q).split(/\s+/).filter(Boolean);
+    const list = GAMES.filter((g) => {
+      if (state.playFilter === 'online' && !g.play) return false;
+      if (state.playFilter === 'free' && !['free', 'demo'].includes(g.needs)) return false;
+      if (state.playFilter === 'own' && !['files', 'rom'].includes(g.needs)) return false;
+      if (!tokens.length) return true;
+      const hay = norm(`${g.game} ${g.project} ${g.original} ${g.kind} ${g.desc} ${(g.platforms || []).join(' ')}`);
+      return tokens.every((t) => hay.includes(t));
+    });
+    const online = GAMES.filter((g) => g.play).length;
+    const free = GAMES.filter((g) => ['free', 'demo'].includes(g.needs)).length;
+    const note = `<div class="play-note">${icon('info')}<p><b>Aucun jeu n’est hébergé ici.</b> Ces projets recréent le code des jeux, pas leurs graphismes ni leur musique :
+      la plupart demandent <b>votre propre copie</b> du jeu original (la ROM de votre cartouche, ou des fichiers achetés sur GOG ou Steam).
+      Les liens mènent uniquement aux pages officielles des projets. Les jeux « Rien à fournir » et « Démo gratuite » se jouent sans rien acheter.</p></div>`;
+    return `${note}
+      <div class="count-line"><span><b>${list.length}</b> jeu${list.length > 1 ? 'x' : ''}${list.length !== GAMES.length ? ` sur ${GAMES.length}` : ''} · ${online} jouables en ligne · ${free} gratuits</span></div>
+      ${list.length ? `<div class="grid games">${list.map(gameHTML).join('')}</div>` : `<div class="empty">${icon('filter')}<b>Aucun jeu</b><p>Aucun jeu ne correspond à ces filtres.</p></div>`}`;
+  }
+
   /** Bouton « Afficher plus » ; il se déclenche aussi tout seul en approchant du bas (voir setupReveal). */
   const moreHTML = (left) => (left > 0
     ? `<div id="more" class="load-more"><button type="button" class="btn ghost" data-act="more">${icon('plus')}Afficher plus <span>(${left} restant${left > 1 ? 's' : ''})</span></button></div>`
@@ -1133,6 +1194,10 @@
     </div>`;
 
   function toolbarHTML() {
+    if (state.sub === 'play') {
+      return `<div class="toolbar">${searchHTML('Rechercher un jeu, une console…')}
+        ${seg('playf', state.playFilter, [['all', 'Tous'], ['online', `${icon('play')}Jouables en ligne`], ['free', 'Gratuits'], ['own', 'Avec votre copie']])}</div>`;
+    }
     const search = searchHTML('Rechercher dans cette rubrique…');
     if (state.sub === 'projects') {
       return `<div class="toolbar">${search}${seg('sort', state.projSort, [['stars', `${icon('star')}Populaires`], ['recent', `${icon('clock')}Récemment actifs`]])}</div>`;
@@ -1208,12 +1273,12 @@
     const t = TAB[state.tab];
     const cat = CAT[state.tab];
     document.documentElement.style.setProperty('--c', t.color);
-    let html = `<div class="v-title"><span class="ico">${icon(t.icon)}</span><div><h1>${esc(t.long)}</h1><p class="v-sub">${esc(state.sub === 'projects' ? PROJECTS_ABOUT : t.about)}</p></div></div>`;
+    const about = { projects: PROJECTS_ABOUT, play: PLAY_ABOUT }[state.sub] || t.about;
+    let html = `<div class="v-title"><span class="ico">${icon(t.icon)}</span><div><h1>${esc(t.long)}</h1><p class="v-sub">${esc(about)}</p></div></div>`;
     if (cat?.projects) {
-      html += `<div class="subnav" role="tablist">
-        <button data-act="sub" data-v="news" class="${state.sub === 'news' ? 'on' : ''}" role="tab" aria-selected="${state.sub === 'news'}">Actualités</button>
-        <button data-act="sub" data-v="projects" class="${state.sub === 'projects' ? 'on' : ''}" role="tab" aria-selected="${state.sub === 'projects'}">Projets GitHub</button>
-      </div>`;
+      const subs = [['news', 'Actualités'], ['projects', 'Projets GitHub']];
+      if (state.tab === 'jeux') subs.push(['play', `${icon('play')}Jouer`]);
+      html += `<div class="subnav" role="tablist">${subs.map(([v, label]) => `<button data-act="sub" data-v="${v}" class="${state.sub === v ? 'on' : ''}" role="tab" aria-selected="${state.sub === v}">${label}</button>`).join('')}</div>`;
     }
     if (cat) html += toolbarHTML();
     if (state.tab === 'favoris') {
@@ -1237,6 +1302,7 @@
     else if (state.tab === 'favoris') html = favoritesHTML();
     else if (state.tab === 'apropos') html = aboutHTML();
     else if (state.sub === 'projects') html = projectsHTML(state.tab);
+    else if (state.sub === 'play') html = playHTML();
     else html = newsHTML(state.tab);
     if (state.tab === 'radar') updateTicker();
     if (CAT[state.tab] && !document.hidden) {
@@ -1495,7 +1561,9 @@
   function parseHash() {
     const [tab, sub] = decodeURIComponent(location.hash.replace(/^#\/?/, '')).split('/');
     state.tab = TAB[tab] ? tab : 'radar';
-    state.sub = sub === 'projets' && CAT[state.tab]?.projects ? 'projects' : 'news';
+    state.sub = 'news';
+    if (sub === 'projets' && CAT[state.tab]?.projects) state.sub = 'projects';
+    if (sub === 'jouer' && state.tab === 'jeux') state.sub = 'play';
   }
 
   function go(enter = true) {
@@ -1518,7 +1586,8 @@
     parseHash();
     if (state.tab !== before) state.q = '';
     const order = (id) => TABS.findIndex((t) => t.id === id);
-    const forward = order(state.tab) > order(before) || (state.tab === before && state.sub === 'projects' && beforeSub !== 'projects');
+    const subOrder = Object.keys(SUBS);
+    const forward = order(state.tab) > order(before) || (state.tab === before && subOrder.indexOf(state.sub) > subOrder.indexOf(beforeSub));
     transition(forward ? 'next' : 'prev', () => {
       go();
       window.scrollTo({ top: 0 });
@@ -1537,8 +1606,9 @@
     switch (act) {
       case 'sub':
         markSeg(); // le repère glisse, puis la page change
-        setTimeout(() => { location.hash = v === 'projects' ? `${state.tab}/projets` : state.tab; }, reduceMotion.matches ? 0 : 170);
+        setTimeout(() => { location.hash = SUBS[v] ? `${state.tab}/${SUBS[v]}` : state.tab; }, reduceMotion.matches ? 0 : 170);
         return;
+      case 'playf': state.playFilter = v; markSeg(); break;
       case 'lang': state.lang = v; markSeg(); break;
       case 'view': state.view = v; markSeg(); break;
       case 'sort': state.projSort = v; markSeg(); break;
