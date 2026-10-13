@@ -21,6 +21,7 @@ window.NEXUS = (() => {
     expert: { label: 'Expert', hint: 'Auteur indépendant reconnu dans son domaine, qui signe ses articles.' },
     communaute: { label: 'Communauté', hint: 'Agrégateur communautaire modéré (votes, modération). Pertinent et rapide, mais à recouper.' },
     projet: { label: 'Projet', hint: 'Dépôt de code public : la source primaire, le travail est vérifiable directement.' },
+    perso: { label: 'Perso', hint: 'Source que vous avez ajoutée vous-même : sa fiabilité n’a pas été vérifiée.' },
   };
 
   const CATEGORIES = [

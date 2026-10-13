@@ -22,10 +22,11 @@ import threading
 import time
 import webbrowser
 import zlib
+from html.parser import HTMLParser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.error import HTTPError, URLError
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urljoin, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 ROOT = Path(__file__).resolve().parent
@@ -41,8 +42,14 @@ USER_AGENT = (
 TIMEOUT = 20
 MAX_BYTES = 10 * 1024 * 1024
 FRESH_FOR = 20  # secondes : en dessous, on ressert la copie en cache sans recontacter la source
+CACHE_MAX = 400  # nombre d'URL gardees en memoire
+RATE_LIMIT = 60  # en ligne : requetes par minute et par visiteur vers des sources perso
+FEED_TYPES = ("application/rss+xml", "application/atom+xml", "application/rdf+xml")
+COMMON_FEED_PATHS = ("/feed", "/rss", "/feed.xml", "/rss.xml", "/atom.xml", "/index.xml")
+FEED_MARK = re.compile(rb"<(?:rss|feed|rdf:RDF)[\s>]", re.IGNORECASE)
 
 _cache = {}
+_hits = {}
 _lock = threading.Lock()
 _allowed = {"mtime": None, "hosts": frozenset()}
 
@@ -54,7 +61,7 @@ class RelayError(Exception):
 
 
 def allowed_hosts():
-    """Domaines cites dans js/sources.js : le relais ne contacte qu'eux (relu quand le fichier change)."""
+    """Domaines cites dans js/sources.js (relu quand le fichier change)."""
     try:
         mtime = SOURCES_FILE.stat().st_mtime
     except OSError:
@@ -89,6 +96,26 @@ class SafeRedirect(HTTPRedirectHandler):
 _opener = build_opener(SafeRedirect)
 
 
+def looks_like_feed(body):
+    head = body[:5000].lstrip(b"\xef\xbb\xbf \t\r\n")
+    return head.startswith(b"<") and FEED_MARK.search(head) is not None
+
+
+def over_limit(client):
+    """En ligne, limite les requetes vers des domaines hors catalogue (sources perso)."""
+    if not HOSTED:
+        return False
+    now = time.time()
+    with _lock:
+        if len(_hits) > 5000:
+            _hits.clear()
+        start, count = _hits.get(client, (now, 0))
+        if now - start > 60:
+            start, count = now, 0
+        _hits[client] = (start, count + 1)
+    return count + 1 > RATE_LIMIT
+
+
 def decode_body(raw, encoding):
     encoding = (encoding or "").lower()
     if encoding == "gzip":
@@ -101,17 +128,22 @@ def decode_body(raw, encoding):
     return raw
 
 
-def fetch(url):
-    """Recupere une URL avec cache court et requetes conditionnelles (ETag / Last-Modified)."""
+def fetch(url, client="local"):
+    """Recupere une URL avec cache court et requetes conditionnelles (ETag / Last-Modified).
+
+    Domaines du catalogue (js/sources.js) : tout contenu est relaye (flux, API JSON).
+    Autres domaines (sources perso) : seuls les flux RSS/Atom passent, le relais n'est pas un proxy web.
+    """
     hostname = (urlparse(url).hostname or "").lower()
-    if hostname not in allowed_hosts():
-        raise RelayError(403, f"Domaine absent de js/sources.js : {hostname or url[:60]}")
+    trusted = hostname in allowed_hosts()
 
     now = time.time()
     with _lock:
         cached = _cache.get(url)
     if cached and now - cached["at"] < FRESH_FOR:
         return cached, "hit"
+    if not trusted and over_limit(client):
+        raise RelayError(429, "Trop de requetes vers des sources perso : patientez une minute")
 
     check_url(url)
     headers = {
@@ -154,9 +186,76 @@ def fetch(url):
     except (URLError, TimeoutError, ConnectionError) as err:
         raise RelayError(502, f"Source injoignable : {getattr(err, 'reason', err)}") from None
 
+    if not trusted and not looks_like_feed(entry["body"]):
+        raise RelayError(415, "Ce lien n'est pas un flux RSS/Atom")
     with _lock:
         _cache[url] = entry
+        if len(_cache) > CACHE_MAX:
+            del _cache[min(_cache, key=lambda k: _cache[k]["at"])]
     return entry, state
+
+
+class FeedLinks(HTMLParser):
+    """Releve les <link rel="alternate" type="application/rss+xml"> d'une page web."""
+
+    def __init__(self, base):
+        super().__init__()
+        self.base = base
+        self.feeds = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag != "link":
+            return
+        a = {key: value or "" for key, value in attrs}
+        if "alternate" in a.get("rel", "").lower().split() and a.get("type", "").lower() in FEED_TYPES and a.get("href"):
+            self.feeds.append({"url": urljoin(self.base, a["href"]), "title": a.get("title", "").strip()})
+
+
+def get_page(url, timeout=TIMEOUT, limit=3 * 1024 * 1024):
+    """GET simple pour la decouverte de flux : renvoie (corps decode, URL finale apres redirections)."""
+    check_url(url)
+    request = Request(url, headers={
+        "User-Agent": USER_AGENT,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+    })
+    try:
+        with _opener.open(request, timeout=timeout) as resp:
+            raw = resp.read(limit + 1)
+            if len(raw) > limit:
+                raise RelayError(502, "Page trop volumineuse")
+            return decode_body(raw, resp.headers.get("Content-Encoding")), resp.url
+    except HTTPError as err:
+        raise RelayError(err.code, f"Le site a repondu {err.code} {err.reason}") from None
+    except (URLError, TimeoutError, ConnectionError) as err:
+        raise RelayError(502, f"Site injoignable : {getattr(err, 'reason', err)}") from None
+
+
+def find_feeds(url):
+    """Flux d'un site : l'URL elle-meme si c'est un flux, sinon ses balises <link>, sinon les chemins usuels."""
+    body, final_url = get_page(url)
+    if looks_like_feed(body):
+        return [{"url": url, "title": ""}]
+    parser = FeedLinks(final_url)
+    parser.feed(body[:1_000_000].decode("utf-8", "replace"))
+    feeds, seen = [], set()
+    for feed in parser.feeds:
+        if feed["url"] not in seen and urlparse(feed["url"]).scheme in ("http", "https"):
+            seen.add(feed["url"])
+            feeds.append(feed)
+    if feeds:
+        return feeds[:8]
+    parts = urlparse(final_url)
+    for path in COMMON_FEED_PATHS:
+        candidate = f"{parts.scheme}://{parts.netloc}{path}"
+        try:
+            probe, _ = get_page(candidate, timeout=8, limit=MAX_BYTES)
+        except RelayError:
+            continue
+        if looks_like_feed(probe):
+            return [{"url": candidate, "title": ""}]
+    return []
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -199,23 +298,44 @@ class Handler(SimpleHTTPRequestHandler):
             self.reply(200, body, "application/json")
         elif route.path == "/api/proxy":
             self.proxy(parse_qs(route.query).get("url", [""])[0])
+        elif route.path == "/api/discover":
+            self.discover(parse_qs(route.query).get("url", [""])[0])
         elif route.path in ("/", "/index.html") or route.path.startswith(("/css/", "/js/")):
             super().do_GET()  # seul le site est servi, pas le reste du dossier
         else:
             self.send_error(404, "Not found")
 
+    def client_id(self):
+        if HOSTED:  # derriere le proxy de l'hebergeur, l'adresse du visiteur est dans X-Forwarded-For
+            forwarded = self.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+            if forwarded:
+                return forwarded
+        return self.client_address[0]
+
+    def fail(self, url, err):
+        status = err.status if isinstance(err, RelayError) else 502
+        message = str(err) if isinstance(err, RelayError) else f"Erreur du relais : {err}"
+        print(f"  [!] {status}  {url[:100]}\n      {message}")
+        self.reply(status, message.encode("utf-8"), "text/plain; charset=utf-8")
+
     def proxy(self, url):
         try:
-            entry, state = fetch(url)
-        except RelayError as err:
-            print(f"  [!] {err.status}  {url[:100]}\n      {err}")
-            self.reply(err.status, str(err).encode("utf-8"), "text/plain; charset=utf-8")
-            return
-        except Exception as err:  # flux corrompu, decompression impossible...
-            print(f"  [!] 502  {url[:100]}\n      {err!r}")
-            self.reply(502, f"Erreur du relais : {err}".encode("utf-8"), "text/plain; charset=utf-8")
+            entry, state = fetch(url, self.client_id())
+        except Exception as err:  # RelayError, flux corrompu, decompression impossible...
+            self.fail(url, err)
             return
         self.reply(200, entry["body"], entry["type"], {"X-Nexus-Cache": state})
+
+    def discover(self, url):
+        if over_limit(self.client_id()):
+            self.fail(url, RelayError(429, "Trop de requetes : patientez une minute"))
+            return
+        try:
+            feeds = find_feeds(url)
+        except Exception as err:
+            self.fail(url, err)
+            return
+        self.reply(200, json.dumps({"feeds": feeds}).encode("utf-8"), "application/json")
 
     def reply(self, status, body, ctype, extra=None):
         self.send_response(status)
@@ -259,7 +379,7 @@ def main():
     if HOSTED:
         print(f"   Mode heberge : ecoute sur {HOST}:{server.server_address[1]}")
         print(f"   Jeton GitHub : {'oui' if GITHUB_TOKEN else 'non (limite publique de l API)'}")
-        print(f"   Domaines autorises : {len(allowed_hosts())}")
+        print(f"   Domaines du catalogue : {len(allowed_hosts())} (sources perso : flux RSS/Atom uniquement)")
     else:
         print(f"   Site    : {url}")
         print("   Arret   : Ctrl+C  (ou fermez cette fenetre)")

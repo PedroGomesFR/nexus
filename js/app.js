@@ -3,6 +3,8 @@
  * Les flux passent par le relais (serveur.py, en local ou en ligne) quand il tourne ; sinon le
  * navigateur les lit directement, ce qui ne fonctionne que pour les sources
  * qui autorisent la lecture depuis une autre page (CORS).
+ * Favoris et sources perso sont enregistrés dans le navigateur (localStorage),
+ * avec export / import en fichier JSON pour les transférer.
  */
 (() => {
   'use strict';
@@ -13,7 +15,8 @@
   const TABS = [
     { id: 'radar', label: 'Radar', long: 'Radar', icon: 'radar', color: '#00e5ff', about: 'Les derniers titres de chaque rubrique, en un coup d’œil.' },
     ...CATEGORIES,
-    { id: 'sources', label: 'Sources', long: 'Sources & fiabilité', icon: 'list', color: '#ffb020', about: 'D’où vient chaque information, son niveau de fiabilité et son état en direct.' },
+    { id: 'favoris', label: 'Favoris', long: 'Favoris', icon: 'bookmark', color: '#ffd34d', about: 'Vos articles et projets enregistrés. Ils restent ici même quand ils disparaissent des flux.' },
+    { id: 'sources', label: 'Sources', long: 'Sources & fiabilité', icon: 'list', color: '#a5b4fc', about: 'D’où vient chaque information, son niveau de fiabilité et son état en direct. Ajoutez aussi vos propres sources.' },
   ];
   const TAB = Object.fromEntries(TABS.map((t) => [t.id, t]));
   const PROJECTS_ABOUT = 'Dépôts GitHub publics : le code est vérifiable. Classés par étoiles ou par activité récente.';
@@ -22,6 +25,8 @@
   const PERIOD_MS = { all: Infinity, day: 864e5, week: 6048e5, month: 2592e6 };
   const NEW_WINDOW = 30 * 60e3; // un article reste marqué « nouveau » 30 minutes
   const STORE_KEY = 'nexus.v1';
+  const FAVS_KEY = 'nexus.favs';
+  const CUSTOM_KEY = 'nexus.custom';
   const RING = 2 * Math.PI * 23;
   const CONCURRENCY = 6;
   const GENERIC_TOPICS = new Set(['decompilation', 'decomp', 'reverse-engineering', 'recompilation', 'matching-decompilation', 'game', 'games', 'api']);
@@ -35,6 +40,12 @@
     chip: '<rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6" rx="1"/><path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 2v2M9 20v2"/>',
     shield: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
     list: '<path d="m3 17 2 2 4-4M3 7l2 2 4-4M13 6h8M13 12h8M13 18h8"/>',
+    bookmark: '<path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/>',
+    plus: '<path d="M5 12h14M12 5v14"/>',
+    trash: '<path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+    download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
+    upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>',
+    check: '<path d="M20 6 9 17l-5-5"/>',
     search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
     star: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
     fork: '<circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9M12 12v3"/>',
@@ -55,6 +66,7 @@
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
   const clip = (s, n) => (s.length > n ? s.slice(0, n).replace(/\s+\S*$/, '') + '…' : s);
+  const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const safeUrl = (u, base) => {
     try {
       const url = new URL(String(u).trim(), base);
@@ -136,17 +148,39 @@
     return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - Math.floor(t / 1000) * 1000;
   }
 
-  // ───────── Stockage local (préférences + dernier état, pour un affichage instantané) ─────────
-  const store = {
-    load() {
-      try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch { return {}; }
-    },
-    save(data) {
-      try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch { /* stockage plein ou bloqué */ }
-    },
+  // ───────── Stockage local ─────────
+  const readJSON = (key, fallback) => {
+    try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
+  };
+  const writeJSON = (key, value) => {
+    try { localStorage.setItem(key, JSON.stringify(value)); return true; } catch { return false; }
   };
 
-  const saved = store.load();
+  // ───────── Sources perso (ajoutées depuis l'onglet Sources) ─────────
+  const keywordsRe = (text) => {
+    const words = String(text || '').split(',').map((w) => w.trim()).filter(Boolean);
+    return words.length ? new RegExp(words.map(escapeRe).join('|'), 'i') : undefined;
+  };
+  const hnUrl = (query) =>
+    `https://hn.algolia.com/api/v1/search_by_date?query=${encodeURIComponent(query)}&tags=story&numericFilters=${encodeURIComponent('points>5')}&hitsPerPage=40`;
+
+  let customRaw = readJSON(CUSTOM_KEY, []);
+  if (!Array.isArray(customRaw)) customRaw = [];
+  customRaw = customRaw.filter((r) => r && r.id && safeUrl(r.url) && CAT[r.cat]);
+
+  function registerSource(raw) {
+    const src = { ...raw, kind: raw.kind === 'hn' ? 'hn' : 'rss', type: 'perso', custom: true, include: keywordsRe(raw.keywords) };
+    SOURCES.push(src);
+    SRC[src.id] = src;
+    return src;
+  }
+  customRaw.forEach(registerSource);
+
+  // ───────── État ─────────
+  const saved = readJSON(STORE_KEY, {}) || {};
+  let favs = readJSON(FAVS_KEY, {});
+  if (!favs || typeof favs !== 'object' || Array.isArray(favs)) favs = {};
+
   const state = {
     relay: false,
     hosted: false, // relais en ligne (Render…) plutôt que sur ce PC
@@ -158,12 +192,17 @@
     period: saved.period in PERIODS ? saved.period : 'all',
     view: saved.view === 'list' ? 'list' : 'grid',
     projSort: saved.projSort === 'recent' ? 'recent' : 'stars',
+    favSort: saved.favSort === 'date' ? 'date' : 'added',
     hidden: new Set((saved.hidden || []).filter((id) => SRC[id])),
     auto: saved.auto ?? true,
     interval: INTERVALS.some(([v]) => v === saved.interval) ? saved.interval : 60,
     results: Object.fromEntries(Object.entries(saved.results || {}).filter(([id]) => SRC[id])),
     firstSeen: saved.firstSeen || {},
     lastVisit: saved.lastVisit || {},
+    favs,
+    addOpen: false, // formulaire « Ajouter une source » ouvert
+    addCat: 'info',
+    draft: null, // source testée, en attente de confirmation
     pending: new Set(),
     loading: false,
     nextAt: 0,
@@ -171,24 +210,27 @@
   };
 
   function persist() {
-    store.save({
-      lang: state.lang, period: state.period, view: state.view, projSort: state.projSort,
+    writeJSON(STORE_KEY, {
+      lang: state.lang, period: state.period, view: state.view, projSort: state.projSort, favSort: state.favSort,
       hidden: [...state.hidden], auto: state.auto, interval: state.interval,
       results: state.results, firstSeen: state.firstSeen, lastVisit: state.lastVisit, lastSync: state.lastSync,
     });
   }
   let persistTimer = 0;
   const persistSoon = () => { clearTimeout(persistTimer); persistTimer = setTimeout(persist, 800); };
+  const storageWarning = () => toast('Enregistrement impossible', 'Le navigateur bloque le stockage local (navigation privée ?).');
+  const saveFavs = () => writeJSON(FAVS_KEY, state.favs) || storageWarning();
+  const saveCustom = () => writeJSON(CUSTOM_KEY, customRaw) || storageWarning();
 
   // ───────── Récupération des flux ─────────
   const inflight = new Map(); // une même URL partagée par plusieurs sources n'est téléchargée qu'une fois par cycle
 
   function httpMessage(status, url, body) {
     if (status === 403 && url.includes('api.github.com')) return 'Limite de l’API GitHub atteinte, nouvel essai automatique plus tard';
-    if (status === 429) return 'La source limite le nombre de requêtes (429), nouvel essai plus tard';
-    if (status === 404) return 'Flux introuvable (404) : l’adresse a peut-être changé';
-    if (status === 401 || status === 403) return `Accès refusé par la source (${status})`;
+    if (status === 429) return body && body.length < 300 ? body : 'La source limite le nombre de requêtes (429), nouvel essai plus tard';
+    if (status === 404) return 'Introuvable (404) : l’adresse a peut-être changé';
     if (body && body.length < 300) return body;
+    if (status === 401 || status === 403) return `Accès refusé par la source (${status})`;
     return `Erreur HTTP ${status}`;
   }
 
@@ -199,8 +241,9 @@
     try { return new TextDecoder(charset || 'utf-8').decode(buf); } catch { return new TextDecoder().decode(buf); }
   }
 
-  function getText(url) {
-    if (inflight.has(url)) return inflight.get(url);
+  /** Télécharge une URL (via le relais s'il est là). shared = mutualisé avec le cycle de rafraîchissement en cours. */
+  function getText(url, shared = true) {
+    if (shared && inflight.has(url)) return inflight.get(url);
     const target = state.relay ? `/api/proxy?url=${encodeURIComponent(url)}` : url;
     const job = fetch(target, { cache: 'no-store', signal: AbortSignal.timeout(25000) })
       .then(async (res) => {
@@ -219,7 +262,7 @@
         }
         throw err;
       });
-    inflight.set(url, job);
+    if (shared) inflight.set(url, job);
     return job;
   }
 
@@ -294,6 +337,25 @@
         image: entryImage(el, content || desc, link || url),
       };
     });
+  }
+
+  /** Titre d'un flux RSS/Atom (pour nommer automatiquement une source perso). */
+  function feedTitle(text) {
+    try {
+      const t = parseXml(text).querySelector('channel > title, feed > title');
+      return t ? decode(t.textContent.trim()).replace(/\s+/g, ' ') : '';
+    } catch {
+      return '';
+    }
+  }
+
+  /** Langue d'un flux : celle qu'il déclare, sinon devinée sur les mots les plus courants. */
+  function guessLang(text, items) {
+    const declared = /<(?:language|dc:language)>\s*([a-z]{2})/i.exec(text)?.[1] || /<feed[^>]+xml:lang=["']([a-z]{2})/i.exec(text)?.[1];
+    if (declared) return declared.toLowerCase() === 'fr' ? 'fr' : 'en';
+    const sample = ` ${items.slice(0, 15).map((it) => `${it.title} ${it.summary}`).join(' ').toLowerCase()} `;
+    const count = (words) => words.reduce((n, w) => n + sample.split(` ${w} `).length - 1, 0);
+    return count(['le', 'la', 'les', 'des', 'est', 'une', 'pour', 'et', 'dans']) > count(['the', 'and', 'is', 'of', 'to', 'in', 'for']) ? 'fr' : 'en';
   }
 
   function parseHN(text) {
@@ -417,9 +479,9 @@
           state.firstSeen[it.id] = baseline ? 0 : Date.now();
           if (!baseline && !it.repo) fresh.push(it);
         }
-        state.results[src.id] = { items, at: Date.now(), ok: true, ms, error: warn };
+        if (SRC[src.id]) state.results[src.id] = { items, at: Date.now(), ok: true, ms, error: warn };
       } catch (err) {
-        state.results[src.id] = { items: prev?.items || [], at: Date.now(), ok: false, ms: 0, error: err.message, blocked: !!err.blocked };
+        if (SRC[src.id]) state.results[src.id] = { items: prev?.items || [], at: Date.now(), ok: false, ms: 0, error: err.message, blocked: !!err.blocked };
       }
       state.pending.delete(src.id);
       scheduleRender();
@@ -434,7 +496,7 @@
     schedule();
     renderBody();
     updateChrome();
-    if (fresh.length) notifyNew(fresh);
+    if (fresh.length) notifyNew(fresh.filter((it) => SRC[it.src]));
     else if (manual) toast('Synchronisé', 'Aucun nouvel article depuis la dernière vérification.');
   }
 
@@ -461,6 +523,20 @@
     return newsItems(catId).filter((it) => state.firstSeen[it.id] > since).length;
   };
 
+  /** Source d'un élément ; pour un favori dont la source a été supprimée, on reconstruit l'essentiel. */
+  function srcOf(it) {
+    if (SRC[it.src]) return SRC[it.src];
+    const info = it.srcInfo || {};
+    return {
+      id: it.src || 'inconnue',
+      name: info.name || 'Source supprimée',
+      cat: CAT[info.cat] ? info.cat : 'info',
+      lang: info.lang === 'fr' ? 'fr' : 'en',
+      type: TYPES[info.type] ? info.type : 'perso',
+      mono: info.mono,
+    };
+  }
+
   function statusOf(src) {
     if (state.pending.has(src.id)) return 'wait';
     const r = state.results[src.id];
@@ -469,14 +545,15 @@
     return r.blocked ? 'blocked' : 'err';
   }
 
-  function filterItems(items, projects = false) {
+  /** mode : 'news' (tous les filtres), 'projects' (sources masquées + recherche), 'favs' (recherche seule). */
+  function filterItems(items, mode = 'news') {
     const tokens = norm(state.q).split(/\s+/).filter(Boolean);
     const maxAge = PERIOD_MS[state.period];
     const now = Date.now();
     return items.filter((it) => {
-      const src = SRC[it.src];
-      if (state.hidden.has(src.id)) return false;
-      if (!projects) {
+      const src = srcOf(it);
+      if (mode !== 'favs' && state.hidden.has(src.id)) return false;
+      if (mode === 'news') {
         if (state.lang !== 'all' && src.lang !== state.lang) return false;
         if (state.type !== 'all' && src.type !== state.type) return false;
         if (maxAge !== Infinity && (!it.date || now - it.date > maxAge)) return false;
@@ -489,25 +566,213 @@
     });
   }
 
+  // ───────── Favoris ─────────
+  function findItem(id) {
+    for (const r of Object.values(state.results)) for (const it of r.items || []) if (it.id === id) return it;
+    return state.favs[id] || null;
+  }
+
+  function toggleFav(id) {
+    if (state.favs[id]) {
+      const removed = state.favs[id];
+      delete state.favs[id];
+      saveFavs();
+      toast('Retiré des favoris', 'Cliquez ici pour annuler.', () => {
+        state.favs[id] = removed;
+        saveFavs();
+        renderBody();
+        updateChrome();
+      });
+    } else {
+      const it = findItem(id);
+      if (!it) return;
+      const s = srcOf(it);
+      state.favs[id] = { ...it, savedAt: Date.now(), srcInfo: { name: s.name, cat: s.cat, lang: s.lang, type: s.type, mono: s.mono } };
+      saveFavs();
+    }
+    renderBody();
+    updateChrome();
+  }
+
+  /** Nettoie un favori venu d'un fichier importé : seuls les champs connus, liens http(s) uniquement. */
+  function cleanFav(f) {
+    const link = safeUrl(f.link);
+    if (!f.id || !f.title || !link) return null;
+    const info = f.srcInfo || {};
+    return {
+      id: String(f.id), title: String(f.title).slice(0, 300), link, date: Number(f.date) || 0,
+      summary: String(f.summary || '').slice(0, 400), image: f.image ? safeUrl(f.image) : '',
+      src: String(f.src || ''), savedAt: Number(f.savedAt) || Date.now(),
+      srcInfo: { name: String(info.name || '').slice(0, 60), cat: CAT[info.cat] ? info.cat : 'info', lang: info.lang === 'fr' ? 'fr' : 'en', type: TYPES[info.type] ? info.type : 'perso', mono: info.mono ? String(info.mono).slice(0, 4) : undefined },
+      repo: !!f.repo, stars: Number(f.stars) || 0, forks: Number(f.forks) || 0, language: String(f.language || ''),
+      topics: Array.isArray(f.topics) ? f.topics.map(String).slice(0, 12) : [], archived: !!f.archived,
+      host: String(f.host || ''), points: f.points == null ? undefined : Number(f.points) || 0,
+      comments: Number(f.comments) || 0, discuss: f.discuss ? safeUrl(f.discuss) || undefined : undefined,
+    };
+  }
+
+  function exportData() {
+    const data = { app: 'nexus', version: 1, exportedAt: new Date().toISOString(), favorites: Object.values(state.favs), sources: customRaw };
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+    a.download = `nexus-sauvegarde-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    toast('Sauvegarde exportée', `${data.favorites.length} favori(s) et ${data.sources.length} source(s) perso dans le fichier téléchargé.`);
+  }
+
+  async function importData(file) {
+    try {
+      const data = JSON.parse(await file.text());
+      if (data?.app !== 'nexus') throw new Error('Ce fichier n’est pas une sauvegarde NEXUS.');
+      let nf = 0;
+      let ns = 0;
+      for (const f of Array.isArray(data.favorites) ? data.favorites : []) {
+        const fav = f && cleanFav(f);
+        if (fav && !state.favs[fav.id]) { state.favs[fav.id] = fav; nf++; }
+      }
+      for (const r of Array.isArray(data.sources) ? data.sources : []) {
+        const url = r && safeUrl(r.url);
+        if (!url || !CAT[r.cat] || SOURCES.some((s) => [].concat(s.url).includes(url))) continue;
+        const raw = {
+          id: `perso-${Date.now().toString(36)}-${ns}`, cat: r.cat, name: String(r.name || hostOf(url)).slice(0, 60),
+          site: safeUrl(r.site) || `${new URL(url).origin}/`, url, kind: r.kind === 'hn' ? 'hn' : 'rss',
+          lang: r.lang === 'fr' ? 'fr' : 'en', keywords: String(r.keywords || '').slice(0, 300), addedAt: Date.now(),
+        };
+        customRaw.push(raw);
+        registerSource(raw);
+        ns++;
+      }
+      saveFavs();
+      saveCustom();
+      toast('Import terminé', `${nf} favori(s) et ${ns} source(s) ajoutés.`);
+      renderHead();
+      renderBody();
+      updateChrome();
+      if (ns) refresh();
+    } catch (err) {
+      toast('Import impossible', err instanceof SyntaxError ? 'Le fichier n’est pas un JSON valide.' : err.message);
+    }
+  }
+
+  // ───────── Ajout / suppression de sources perso ─────────
+  async function discoverFeeds(url) {
+    const res = await fetch(`/api/discover?url=${encodeURIComponent(url)}`, { cache: 'no-store', signal: AbortSignal.timeout(60000) });
+    if (!res.ok) throw new Error(httpMessage(res.status, url, (await res.text().catch(() => '')).trim()));
+    return (await res.json()).feeds || [];
+  }
+
+  async function testSource(form) {
+    const data = Object.fromEntries(new FormData(form));
+    const kind = form.dataset.kind === 'hn' ? 'hn' : 'rss';
+    const status = $('#add-status');
+    const preview = $('#add-preview');
+    const button = form.querySelector('button[type="submit"]');
+    state.draft = null;
+    preview.innerHTML = '';
+    status.className = 'add-status wait';
+    status.textContent = kind === 'rss' && state.relay ? 'Recherche du flux sur le site…' : 'Test de la source…';
+    button.disabled = true;
+    try {
+      let url;
+      let site;
+      let alternatives = [];
+      const query = String(data.query || '').trim();
+      if (kind === 'hn') {
+        if (!query) throw new Error('Indiquez ce qu’il faut chercher sur Hacker News.');
+        url = hnUrl(query);
+        site = `https://hn.algolia.com/?q=${encodeURIComponent(query)}`;
+      } else {
+        const typed = String(data.url || '').trim();
+        const input = typed && safeUrl(/^https?:\/\//i.test(typed) ? typed : `https://${typed}`);
+        if (!input) throw new Error('Adresse invalide : collez l’adresse d’un site ou d’un flux RSS.');
+        url = input;
+        if (state.relay) {
+          const found = await discoverFeeds(input);
+          if (!found.length) throw new Error('Aucun flux RSS/Atom trouvé sur ce site. Essayez avec l’adresse exacte de son flux.');
+          url = found[0].url;
+          alternatives = found.slice(1);
+        }
+        site = `${new URL(input).origin}/`;
+      }
+      if (SOURCES.some((s) => [].concat(s.url).includes(url))) throw new Error('Cette source est déjà dans votre liste.');
+      const text = await getText(url, false);
+      const items = (kind === 'hn' ? parseHN(text) : parseFeed(text, url)).filter((it) => it.title && it.link);
+      const re = keywordsRe(data.keywords);
+      const kept = re ? items.filter((it) => re.test(`${it.title} ${it.summary}`)) : items;
+      const name = String(data.name || '').trim() || (kind === 'hn' ? `HN · ${query}` : feedTitle(text) || hostOf(url));
+      const lang = data.lang === 'auto' ? (kind === 'hn' ? 'en' : guessLang(text, items)) : data.lang === 'fr' ? 'fr' : 'en';
+      state.draft = { kind, url, site, cat: CAT[data.cat] ? data.cat : 'info', lang, name: clip(name, 60), keywords: String(data.keywords || '').trim() };
+      status.className = 'add-status ok';
+      status.textContent = 'Source valide';
+      preview.innerHTML = previewHTML(state.draft, items, kept, alternatives);
+    } catch (err) {
+      status.className = 'add-status err';
+      status.textContent = err.message;
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  function confirmAdd() {
+    const d = state.draft;
+    if (!d) return;
+    const raw = { id: `perso-${Date.now().toString(36)}`, cat: d.cat, name: d.name, site: d.site, url: d.url, kind: d.kind, lang: d.lang, keywords: d.keywords, addedAt: Date.now() };
+    customRaw.push(raw);
+    registerSource(raw);
+    saveCustom();
+    state.draft = null;
+    state.addOpen = false;
+    renderHead();
+    renderBody();
+    updateChrome();
+    toast('Source ajoutée', `« ${raw.name} » apparaît maintenant dans ${CAT[raw.cat].label}. Cliquez pour y aller.`, () => { location.hash = raw.cat; });
+    refresh();
+  }
+
+  function deleteSource(id) {
+    const src = SRC[id];
+    if (!src?.custom || !confirm(`Supprimer la source « ${src.name} » ?\nVos favoris qui en proviennent sont conservés.`)) return;
+    customRaw = customRaw.filter((r) => r.id !== id);
+    SOURCES.splice(SOURCES.indexOf(src), 1);
+    delete SRC[id];
+    delete state.results[id];
+    state.hidden.delete(id);
+    saveCustom();
+    pruneSeen();
+    persist();
+    renderBody();
+    updateChrome();
+    toast('Source supprimée', src.name);
+  }
+
   // ───────── Rendu ─────────
   const phHTML = (src) => `<div class="ph" style="--h:${hue(src.name)}"><span>${esc(mono(src))}</span><em>${esc(src.name)}</em></div>`;
   const typeBadge = (type) => `<span class="type type-${type}" title="${esc(TYPES[type].hint)}">${esc(TYPES[type].label)}</span>`;
   const extLink = (href, inner, title = '') => `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer"${title ? ` title="${esc(title)}"` : ''}>${inner}</a>`;
+  const favBtn = (it) => {
+    const on = !!state.favs[it.id];
+    const label = on ? 'Retirer des favoris' : 'Ajouter aux favoris';
+    return `<button class="fav${on ? ' on' : ''}" data-act="fav" data-v="${esc(it.id)}" title="${label}" aria-label="${label}" aria-pressed="${on}">${icon('bookmark')}</button>`;
+  };
 
   function cardHTML(it, i) {
-    const src = SRC[it.src];
+    const src = srcOf(it);
     const cat = CAT[src.cat];
     const fresh = isNew(it);
     const foot = [`<span class="lang">${src.lang.toUpperCase()}</span>`];
     if (it.host) foot.push(`<span>${esc(it.host)}</span>`);
     if (it.points != null) {
       foot.push(`<span class="pts" title="Points Hacker News">${icon('up')}${it.points}</span>`);
-      foot.push(extLink(it.discuss, `${icon('chat')}${it.comments}`, 'Discussion sur Hacker News'));
+      if (it.discuss) foot.push(extLink(it.discuss, `${icon('chat')}${it.comments}`, 'Discussion sur Hacker News'));
     }
     if (src.lang === 'en') {
       foot.push(`<span class="push">${extLink(`https://translate.google.com/translate?sl=auto&tl=fr&u=${encodeURIComponent(it.link)}`, `${icon('translate')}Traduire`, 'Ouvrir l’article traduit en français')}</span>`);
     }
-    return `<article class="card${fresh ? ' is-new' : ''}" data-src="${src.id}" style="--h:${hue(src.name)};--c:${cat.color};--i:${Math.min(i, 18)}">
+    foot.push(favBtn(it));
+    return `<article class="card${fresh ? ' is-new' : ''}" data-src="${esc(src.id)}" style="--h:${hue(src.name)};--c:${cat.color};--i:${Math.min(i, 18)}">
       ${fresh ? '<span class="new-pill">NOUVEAU</span>' : ''}
       <div class="media">${it.image ? `<img src="${esc(it.image)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : phHTML(src)}</div>
       <div class="body">
@@ -520,15 +785,15 @@
   }
 
   function repoHTML(it, i) {
-    const src = SRC[it.src];
+    const src = srcOf(it);
     const cat = CAT[src.cat];
     const [owner, name = it.title] = it.title.split('/');
     const active = Date.now() - it.date < 7 * 864e5;
-    const topics = it.topics.filter((t) => !GENERIC_TOPICS.has(t)).slice(0, 5);
+    const topics = (it.topics || []).filter((t) => !GENERIC_TOPICS.has(t)).slice(0, 5);
     const tag = it.archived
       ? '<span class="tag-live tag-archived" title="Dépôt archivé : plus maintenu">ARCHIVÉ</span>'
       : active ? '<span class="tag-live" title="Code modifié cette semaine">ACTIF</span>' : '';
-    return `<article class="card repo" data-src="${src.id}" style="--h:${hue(name)};--c:${cat.color};--i:${Math.min(i, 18)}">
+    return `<article class="card repo" data-src="${esc(src.id)}" style="--h:${hue(name)};--c:${cat.color};--i:${Math.min(i, 18)}">
       <div class="body">
         <div class="r-head">
           <img class="av" src="${esc(it.image)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">
@@ -542,6 +807,7 @@
           <span title="${it.forks} forks">${icon('fork')}${compact(it.forks)}</span>
           ${it.language ? `<span class="lang-dot" style="--h:${hue(it.language)}">${esc(it.language)}</span>` : ''}
           <span class="push" title="Dernière modification du code">${icon('clock')}${timeTag(it.date)}</span>
+          ${favBtn(it)}
         </div>
       </div>
     </article>`;
@@ -563,7 +829,7 @@
     return `<div class="empty">${icon('info')}<b>Rien pour l’instant</b><p>Les sources n’ont encore rien renvoyé. Essayez de rafraîchir (touche R).</p></div>`;
   }
 
-  function chipsHTML(srcs, all) {
+  function chipsHTML(catId, srcs, all) {
     const counts = {};
     for (const it of all) counts[it.src] = (counts[it.src] || 0) + 1;
     const chips = srcs.map((s) => {
@@ -573,6 +839,7 @@
       return `<button class="chip ${st}${state.hidden.has(s.id) ? ' off' : ''}" data-act="chip" data-v="${s.id}" style="--h:${hue(s.name)}" title="${esc(title)}"><i></i>${esc(s.name)}<b>${counts[s.id] || 0}</b></button>`;
     });
     if (srcs.some((s) => state.hidden.has(s.id))) chips.push('<button class="chip reset" data-act="chips-reset">Tout afficher</button>');
+    chips.push(`<button class="chip add" data-act="add-source" data-v="${catId}" title="Ajouter votre propre source à cette rubrique">${icon('plus')}Ajouter une source</button>`);
     return `<div class="chips">${chips.join('')}</div>`;
   }
 
@@ -581,7 +848,7 @@
     const all = newsItems(catId);
     const items = filterItems(all);
     const shown = items.slice(0, 200);
-    return `${chipsHTML(srcs, all)}
+    return `${chipsHTML(catId, srcs, all)}
       <div class="count-line"><span><b>${items.length}</b> article${items.length > 1 ? 's' : ''}${items.length !== all.length ? ` sur ${all.length}` : ''}</span></div>
       ${shown.length ? `<div class="grid ${state.view}">${shown.map(cardHTML).join('')}</div>` : emptyHTML(srcs, all.length)}`;
   }
@@ -589,7 +856,7 @@
   function projectsHTML(catId) {
     const srcs = projectSources(catId);
     const all = dedupe(srcs.flatMap((s) => state.results[s.id]?.items || []));
-    const items = filterItems(all, true).sort(state.projSort === 'stars' ? (a, b) => b.stars - a.stars : (a, b) => b.date - a.date);
+    const items = filterItems(all, 'projects').sort(state.projSort === 'stars' ? (a, b) => b.stars - a.stars : (a, b) => b.date - a.date);
     const info = srcs.map((s) => {
       const r = state.results[s.id];
       if (!r) return '';
@@ -598,6 +865,17 @@
     }).join('');
     return `<div class="count-line"><span><b>${items.length}</b> projet${items.length > 1 ? 's' : ''}${info ? ` · ${info}` : ''}</span></div>
       ${items.length ? `<div class="grid">${items.map(repoHTML).join('')}</div>` : emptyHTML(srcs, all.length)}`;
+  }
+
+  function favoritesHTML() {
+    const all = Object.values(state.favs);
+    if (!all.length) {
+      return `<div class="empty">${icon('bookmark')}<b>Aucun favori pour l’instant</b>
+        <p>Cliquez sur l’icône signet en bas d’un article ou d’un projet pour le retrouver ici, même quand il aura disparu des flux.</p></div>`;
+    }
+    const items = filterItems(all, 'favs').sort(state.favSort === 'date' ? (a, b) => (b.date || 0) - (a.date || 0) : (a, b) => b.savedAt - a.savedAt);
+    return `<div class="count-line"><span><b>${items.length}</b> favori${items.length > 1 ? 's' : ''}${items.length !== all.length ? ` sur ${all.length}` : ''} · enregistrés dans ce navigateur</span></div>
+      ${items.length ? `<div class="grid">${items.map((it, i) => (it.repo ? repoHTML(it, i) : cardHTML(it, i))).join('')}</div>` : emptyHTML([], all.length)}`;
   }
 
   function radarHTML() {
@@ -629,42 +907,55 @@
       <div class="panels">${panels}</div>`;
   }
 
+  const SOURCE_LABELS = { ok: 'En ligne', err: 'Erreur', blocked: 'Bloquée (CORS)', wait: 'Chargement…', idle: 'Pas encore interrogée' };
+
+  function sourceRowHTML(s) {
+    const r = state.results[s.id];
+    const st = statusOf(s);
+    const urls = [].concat(s.url);
+    const sub = [SOURCE_LABELS[st]];
+    if (r?.at) sub.push(`interrogée ${ago(r.at)}`);
+    if ((s.minAge ?? 30) >= 300) sub.push(`au plus toutes les ${Math.round(s.minAge / 60)} min`);
+    if (s.include) sub.push(s.custom ? `filtre : ${s.keywords}` : 'filtrée par mots-clés');
+    if (s.exclude && s.kind !== 'github') sub.push('sujets « jeux » exclus');
+    const cat = CAT[s.cat];
+    return `<article class="src-item" style="--h:${hue(s.name)}">
+      <span class="dot ${st}" title="${SOURCE_LABELS[st]}"></span>
+      <div class="si-main">${extLink(s.site, esc(s.name)).replace('<a ', '<a class="si-name" ')}${typeBadge(s.type)}<span class="lang">${s.lang.toUpperCase()}</span>${s.custom ? `<span class="cat-tag" style="--c:${cat.color}">${esc(cat.label)}</span>` : ''}</div>
+      <div class="si-stats">${r ? `${r.items.length} élém.${r.ms ? ` · ${r.ms} ms` : ''}` : ''}${s.custom ? `<button class="si-del" data-act="del-source" data-v="${esc(s.id)}" title="Supprimer cette source" aria-label="Supprimer ${esc(s.name)}">${icon('trash')}</button>` : ''}</div>
+      <div class="si-sub">${esc(sub.join(' · '))}${r && !r.ok ? ` · <button class="si-retry" data-act="retry" data-v="${esc(s.id)}">réessayer</button>` : ''}</div>
+      ${r?.error ? `<div class="si-err">${esc(r.error)}</div>` : ''}
+      <div class="si-urls">${urls.slice(0, 2).map((u) => extLink(u, esc(u))).join('')}${urls.length > 2 ? `<span class="si-sub">+ ${urls.length - 2} autre(s) requête(s)</span>` : ''}</div>
+    </article>`;
+  }
+
   function sourcesHTML() {
     const note = state.relay
       ? `<div class="mode-note">${icon('info')}<p>Relais actif : les flux sont lus par <code>serveur.py</code> ${state.hosted ? 'sur le serveur qui héberge ce site' : 'sur votre machine'}, puis analysés dans votre navigateur. Aucun service tiers entre vous et les sources.</p></div>`
       : `<div class="mode-note">${icon('alert')}<p>Mode direct : la page est ouverte sans relais, seules les sources qui autorisent la lecture depuis une autre page répondent. Lancez <code>lancer.bat</code> pour activer toutes les sources.</p></div>`;
+    const custom = SOURCES.filter((s) => s.custom);
+    const mine = `<section class="src-cat" style="--c:#ffd34d"><h2>${icon('plus')}Vos sources perso (${custom.length})</h2>
+      ${custom.length ? `<div class="src-list">${custom.map(sourceRowHTML).join('')}</div>` : '<p class="src-empty">Aucune pour l’instant : utilisez « Ajouter une source » ci-dessus.</p>'}</section>`;
     const legend = `<div class="legend">${Object.entries(TYPES).map(([k, t]) => `<div class="lg"><span class="type type-${k}">${esc(t.label)}</span><p>${esc(t.hint)}</p></div>`).join('')}</div>`;
-    const labels = { ok: 'En ligne', err: 'Erreur', blocked: 'Bloquée (CORS)', wait: 'Chargement…', idle: 'Pas encore interrogée' };
     const groups = CATEGORIES.map((c) => {
-      const rows = SOURCES.filter((s) => s.cat === c.id).map((s) => {
-        const r = state.results[s.id];
-        const st = statusOf(s);
-        const urls = [].concat(s.url);
-        const sub = [labels[st]];
-        if (r?.at) sub.push(`interrogée ${ago(r.at)}`);
-        if ((s.minAge ?? 30) >= 300) sub.push(`au plus toutes les ${Math.round(s.minAge / 60)} min`);
-        if (s.include) sub.push('filtrée par mots-clés');
-        if (s.exclude && s.kind !== 'github') sub.push('sujets « jeux » exclus');
-        return `<article class="src-item" style="--h:${hue(s.name)}">
-          <span class="dot ${st}" title="${labels[st]}"></span>
-          <div class="si-main">${extLink(s.site, esc(s.name)).replace('<a ', '<a class="si-name" ')}${typeBadge(s.type)}<span class="lang">${s.lang.toUpperCase()}</span></div>
-          <div class="si-stats">${r ? `${r.items.length} élém.${r.ms ? ` · ${r.ms} ms` : ''}` : ''}</div>
-          <div class="si-sub">${esc(sub.join(' · '))}${r && !r.ok ? ` · <button class="si-retry" data-act="retry" data-v="${s.id}">réessayer</button>` : ''}</div>
-          ${r?.error ? `<div class="si-err">${esc(r.error)}</div>` : ''}
-          <div class="si-urls">${urls.slice(0, 2).map((u) => extLink(u, esc(u))).join('')}${urls.length > 2 ? `<span class="si-sub">+ ${urls.length - 2} autre(s) requête(s)</span>` : ''}</div>
-        </article>`;
-      }).join('');
+      const rows = SOURCES.filter((s) => s.cat === c.id && !s.custom).map(sourceRowHTML).join('');
       return `<section class="src-cat" style="--c:${c.color}"><h2>${icon(c.icon)}${esc(c.long)}</h2><div class="src-list">${rows}</div></section>`;
     }).join('');
-    return note + legend + groups;
+    return note + mine + legend + groups;
   }
 
   function seg(act, current, options, titles = []) {
-    return `<div class="seg">${options.map(([v, label], i) => `<button data-act="${act}" data-v="${v}" class="${v === current ? 'on' : ''}"${titles[i] ? ` title="${titles[i]}" aria-label="${titles[i]}"` : ''}>${label}</button>`).join('')}</div>`;
+    return `<div class="seg">${options.map(([v, label], i) => `<button type="button" data-act="${act}" data-v="${v}" class="${v === current ? 'on' : ''}"${titles[i] ? ` title="${titles[i]}" aria-label="${titles[i]}"` : ''}>${label}</button>`).join('')}</div>`;
   }
 
+  const searchHTML = (placeholder) => `<label class="search">${icon('search')}<input id="q" type="search" placeholder="${esc(placeholder)}" value="${esc(state.q)}" autocomplete="off" spellcheck="false"><kbd>/</kbd></label>`;
+  const backupHTML = () => `<div class="backup">
+      <button type="button" class="btn ghost" data-act="export" title="Télécharger vos favoris et vos sources perso dans un fichier">${icon('download')}Exporter</button>
+      <button type="button" class="btn ghost" data-act="import" title="Recharger une sauvegarde (autre navigateur, autre appareil)">${icon('upload')}Importer</button>
+    </div>`;
+
   function toolbarHTML() {
-    const search = `<label class="search">${icon('search')}<input id="q" type="search" placeholder="Rechercher dans cette rubrique…" value="${esc(state.q)}" autocomplete="off" spellcheck="false"><kbd>/</kbd></label>`;
+    const search = searchHTML('Rechercher dans cette rubrique…');
     if (state.sub === 'projects') {
       return `<div class="toolbar">${search}${seg('sort', state.projSort, [['stars', `${icon('star')}Populaires`], ['recent', `${icon('clock')}Récemment actifs`]])}</div>`;
     }
@@ -674,6 +965,47 @@
       ${seg('lang', state.lang, [['all', 'FR + EN'], ['fr', 'FR'], ['en', 'EN']])}
       ${period}${type}
       ${seg('view', state.view, [['grid', icon('grid')], ['list', icon('rows')]], ['Vue cartes', 'Vue liste'])}
+    </div>`;
+  }
+
+  function addFormHTML() {
+    const cats = CATEGORIES.map((c) => `<option value="${c.id}"${c.id === state.addCat ? ' selected' : ''}>${esc(c.label)}</option>`).join('');
+    return `<section class="mysrc">
+      <div class="mysrc-h">
+        <div>
+          <h2>${icon('plus')}Mes sources</h2>
+          <p>Ajoutez n’importe quel site ou flux RSS/Atom, ou une recherche Hacker News. Vos sources sont enregistrées dans ce navigateur.</p>
+        </div>
+        <div class="mysrc-actions">
+          <button type="button" class="btn" data-act="toggle-add" aria-expanded="${state.addOpen}">${icon('plus')}Ajouter une source</button>
+          ${backupHTML()}
+        </div>
+      </div>
+      <form id="add-form" class="add-form" data-kind="rss" autocomplete="off"${state.addOpen ? '' : ' hidden'}>
+        ${seg('add-kind', 'rss', [['rss', 'Site ou flux RSS'], ['hn', 'Recherche Hacker News']])}
+        <label class="field f-rss wide"><span>Adresse du site ou de son flux</span>
+          <input name="url" type="text" inputmode="url" spellcheck="false" placeholder="ex. https://www.lemonde.fr/pixels ou https://exemple.com/feed"></label>
+        <label class="field f-hn wide"><span>Recherche sur Hacker News</span>
+          <input name="query" type="text" spellcheck="false" placeholder="ex. reverse engineering, rust, nintendo"></label>
+        <label class="field"><span>Rubrique</span><select name="cat" class="ctl">${cats}</select></label>
+        <label class="field"><span>Langue</span><select name="lang" class="ctl"><option value="auto">Détection auto</option><option value="fr">Français</option><option value="en">Anglais</option></select></label>
+        <label class="field"><span>Nom affiché <em>(facultatif)</em></span><input name="name" type="text" maxlength="60" placeholder="Rempli automatiquement"></label>
+        <label class="field"><span>Filtre mots-clés <em>(facultatif)</em></span><input name="keywords" type="text" placeholder="mots séparés par des virgules"></label>
+        ${state.relay ? '' : '<p class="note-direct">Sans relais, il faut l’adresse exacte du flux, et seuls les flux qui autorisent la lecture directe (CORS) fonctionnent.</p>'}
+        <div class="add-actions wide"><button type="submit" class="btn">${icon('search')}Tester la source</button><span id="add-status" class="add-status" role="status"></span></div>
+        <div id="add-preview" class="wide"></div>
+      </form>
+    </section>`;
+  }
+
+  function previewHTML(d, items, kept, alternatives) {
+    const latest = kept.slice(0, 3).map((it) => `<li>${esc(it.title)} <time>${ago(it.date)}</time></li>`).join('');
+    const count = `${items.length} article${items.length > 1 ? 's' : ''}${d.keywords ? ` · ${kept.length} après filtre` : ''}`;
+    return `<div class="preview">
+      <div class="pv-h">${icon('check')}<b>${esc(d.name)}</b><span>${count} · ${esc(hostOf(d.url))} · ${d.lang.toUpperCase()}</span></div>
+      ${latest ? `<ul>${latest}</ul>` : '<p class="pv-alt">Aucun article ne correspond pour le moment : la source sera surveillée.</p>'}
+      ${alternatives.length ? `<p class="pv-alt">Autres flux trouvés sur ce site : ${alternatives.map((a) => `<button type="button" class="link" data-act="pick-feed" data-v="${esc(a.url)}">${esc(a.title || a.url)}</button>`).join(' · ')}</p>` : ''}
+      <button type="button" class="btn" data-act="confirm-add">${icon('plus')}Ajouter à « ${esc(CAT[d.cat].label)} »</button>
     </div>`;
   }
 
@@ -706,6 +1038,12 @@
       </div>`;
     }
     if (cat) html += toolbarHTML();
+    if (state.tab === 'favoris') {
+      html += `<div class="toolbar">${searchHTML('Rechercher dans vos favoris…')}
+        ${seg('favsort', state.favSort, [['added', `${icon('clock')}Ajoutés récemment`], ['date', `${icon('rows')}Date de publication`]])}
+        ${backupHTML()}</div>`;
+    }
+    if (state.tab === 'sources') html += addFormHTML();
     if (state.tab === 'radar') html += '<div id="ticker" class="ticker"></div>';
     $('#head').innerHTML = html;
     tickerSig = '';
@@ -716,6 +1054,7 @@
     let html;
     if (state.tab === 'radar') html = radarHTML();
     else if (state.tab === 'sources') html = sourcesHTML();
+    else if (state.tab === 'favoris') html = favoritesHTML();
     else if (state.sub === 'projects') html = projectsHTML(state.tab);
     else html = newsHTML(state.tab);
     if (state.tab === 'radar') updateTicker();
@@ -750,10 +1089,12 @@
       const id = el.dataset.tab;
       const selected = id === state.tab;
       el.setAttribute('aria-selected', String(selected));
-      const n = CAT[id] && !selected ? unseen(id) : 0;
-      total += n;
+      const isFavTab = id === 'favoris';
+      const n = isFavTab ? Object.keys(state.favs).length : CAT[id] && !selected ? unseen(id) : 0;
+      if (!isFavTab) total += n;
       const badge = el.querySelector('.badge');
       badge.hidden = !n;
+      badge.classList.toggle('soft', isFavTab);
       badge.textContent = n > 99 ? '99+' : String(n);
     }
     document.title = `${total ? `(${total}) ` : ''}NEXUS · Veille tech`;
@@ -813,6 +1154,7 @@
   }
 
   function notifyNew(fresh) {
+    if (!fresh.length) return;
     const byCat = {};
     for (const it of fresh) {
       const c = SRC[it.src].cat;
@@ -868,12 +1210,20 @@
     updateChrome();
   }
 
+  function focusAddForm() {
+    const form = $('#add-form');
+    if (!form || form.hidden) return;
+    form.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    form.querySelector(form.dataset.kind === 'hn' ? '[name="query"]' : '[name="url"]').focus({ preventScroll: true });
+  }
+
   window.addEventListener('hashchange', () => {
     const before = state.tab;
     parseHash();
     if (state.tab !== before) state.q = '';
     go();
     window.scrollTo({ top: 0 });
+    if (state.tab === 'sources' && state.addOpen) focusAddForm();
   });
 
   document.addEventListener('click', (e) => {
@@ -888,6 +1238,7 @@
       case 'lang': state.lang = v; markSeg(); break;
       case 'view': state.view = v; markSeg(); break;
       case 'sort': state.projSort = v; markSeg(); break;
+      case 'favsort': state.favSort = v; markSeg(); break;
       case 'chip':
         if (state.hidden.has(v)) state.hidden.delete(v);
         else state.hidden.add(v);
@@ -900,6 +1251,48 @@
         SOURCES.forEach((s) => s.cat === state.tab && state.hidden.delete(s.id));
         renderHead();
         break;
+      case 'fav':
+        toggleFav(v);
+        return;
+      case 'export':
+        exportData();
+        return;
+      case 'import':
+        $('#import-file').click();
+        return;
+      case 'add-source':
+        state.addOpen = true;
+        state.addCat = v;
+        if (state.tab === 'sources') { renderHead(); focusAddForm(); } else location.hash = 'sources';
+        return;
+      case 'toggle-add': {
+        const form = $('#add-form');
+        form.hidden = !form.hidden;
+        state.addOpen = !form.hidden;
+        el.setAttribute('aria-expanded', String(state.addOpen));
+        focusAddForm();
+        return;
+      }
+      case 'add-kind': {
+        const form = el.closest('form');
+        form.dataset.kind = v;
+        markSeg();
+        focusAddForm();
+        return;
+      }
+      case 'pick-feed': {
+        const form = $('#add-form');
+        form.dataset.kind = 'rss';
+        form.querySelector('[name="url"]').value = v;
+        form.requestSubmit();
+        return;
+      }
+      case 'confirm-add':
+        confirmAdd();
+        return;
+      case 'del-source':
+        deleteSource(v);
+        return;
       case 'retry':
         if (state.results[v]) state.results[v].at = 0;
         refresh();
@@ -912,10 +1305,22 @@
         return;
     }
     persistSoon();
-    renderBody(act === 'view' || act === 'sort');
+    renderBody(act === 'view' || act === 'sort' || act === 'favsort');
+  });
+
+  document.addEventListener('submit', (e) => {
+    if (e.target.id !== 'add-form') return;
+    e.preventDefault();
+    testSource(e.target);
   });
 
   document.addEventListener('change', (e) => {
+    if (e.target.id === 'import-file') {
+      const file = e.target.files?.[0];
+      e.target.value = '';
+      if (file) importData(file);
+      return;
+    }
     const el = e.target.closest('select[data-act]');
     if (!el) return;
     state[el.dataset.act] = el.value;
@@ -931,9 +1336,11 @@
 
   // Image cassée → image générée ; image minuscule (pixel de suivi) → idem.
   const swapImage = (img) => {
-    const card = img.closest('.card');
     if (img.classList.contains('av')) { img.style.visibility = 'hidden'; return; }
-    if (card && SRC[card.dataset.src]) img.outerHTML = phHTML(SRC[card.dataset.src]);
+    const card = img.closest('.card');
+    if (!card) return;
+    const src = SRC[card.dataset.src] || { name: card.querySelector('.src')?.textContent || '?' };
+    img.outerHTML = phHTML(src);
   };
   document.addEventListener('error', (e) => { if (e.target.tagName === 'IMG') swapImage(e.target); }, true);
   document.addEventListener('load', (e) => {
@@ -992,6 +1399,7 @@
     state.relay = !!relay;
     state.hosted = !!relay?.hosted;
     showMode();
+    if (state.tab === 'sources' && !state.addOpen) renderHead(); // texte du formulaire selon le mode
     setInterval(() => {
       $('#clock').textContent = new Date().toLocaleTimeString('fr-FR');
       updateRing();

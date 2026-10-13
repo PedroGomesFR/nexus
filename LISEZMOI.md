@@ -10,7 +10,29 @@ Site de veille en HTML / CSS / JavaScript pur (ni Node, ni React, rien à compil
 | Reverse Jeux | Actualités (Time Extension, Ars Technica, Hacker News, Hackaday, Lobsters, filtrées par mots-clés) + catalogue GitHub des décompilations de jeux |
 | Informatique | Hacker News, Ars Technica, The Verge, LWN, Tom's Hardware, Next, Numerama, 01net, ZDNet, Korben |
 | Cybersécurité | CERT-FR (ANSSI), NCSC, BleepingComputer, The Hacker News, ZATAZ, Krebs on Security |
-| Sources | Chaque source, son type de fiabilité et son état en direct |
+| Favoris | Les articles et projets que vous avez enregistrés |
+| Sources | Chaque source, son type de fiabilité et son état en direct, et l'ajout de vos propres sources |
+
+## Favoris
+
+Cliquez sur l'icône **signet** en bas d'un article ou d'un projet pour l'enregistrer.
+Il reste dans l'onglet **Favoris** même quand il disparaît des flux. Cliquez à nouveau pour le retirer : le message qui apparaît permet d'annuler.
+
+## Sources perso
+
+Onglet **Sources**, bouton **Ajouter une source**. Vous pouvez aussi cliquer sur « + Ajouter une source » dans les puces d'une rubrique.
+
+- **Site ou flux RSS** : collez l'adresse d'un site, par exemple `https://www.lemonde.fr/pixels/`. Le relais trouve son flux RSS/Atom tout seul.
+  Vous pouvez aussi coller directement l'adresse d'un flux.
+- **Recherche Hacker News** : un ou plusieurs mots, par exemple `decompilation`.
+- Choisissez la rubrique. La langue est détectée automatiquement.
+- Le **filtre mots-clés** est facultatif : `reverse, nintendo` ne garde que les articles qui contiennent l'un de ces mots.
+- **Tester la source** affiche un aperçu des derniers articles. **Ajouter** l'enregistre.
+
+Les sources perso portent le badge **Perso** : leur fiabilité n'a pas été vérifiée. Pour en supprimer une, utilisez l'icône corbeille dans l'onglet Sources.
+
+**Sauvegarde :** favoris et sources perso sont enregistrés dans le navigateur.
+**Exporter** télécharge un fichier JSON, et **Importer** le recharge, par exemple sur un autre navigateur, un téléphone, ou après l'hébergement sur Render.
 
 ## Lancer
 
@@ -44,18 +66,19 @@ Chaque `git push` redéploie le site automatiquement.
 À savoir :
 - **Mise en veille** : l'offre gratuite endort le service après 15 minutes sans visite. La visite suivante prend environ une minute à démarrer. Tant qu'un onglet est ouvert, le rafraîchissement automatique le garde éveillé.
 - **Sources bloquées** : certains sites bloquent les serveurs d'hébergement (Reddit notamment). Ces sources apparaissent en erreur dans l'onglet Sources, les autres fonctionnent normalement.
-- **Sécurité** : en ligne, le relais ne contacte que les domaines présents dans `js/sources.js`, et ne sert que `index.html`, `css/` et `js/`.
+- **Sécurité** : le relais ne sert que `index.html`, `css/` et `js/`, et refuse le réseau local.
+  Il relaie tout contenu pour les domaines de `js/sources.js`. Pour les sources perso, il ne laisse passer que des flux RSS/Atom, avec une limite de débit en ligne : il ne peut pas servir de proxy web ouvert.
 
 ## Utilisation
 
 - Bouton rond en haut à droite : rafraîchir maintenant. L'anneau se remplit jusqu'au prochain rafraîchissement automatique.
 - Interrupteur **Auto** et menu de fréquence : 30 s, 1 min (par défaut), 2, 5 ou 15 min.
-- Raccourcis clavier : `R` rafraîchir, `A` auto, `/` rechercher, `1` à `7` changer d'onglet.
+- Raccourcis clavier : `R` rafraîchir, `A` auto, `/` rechercher, `1` à `8` changer d'onglet.
 - Cliquez sur une puce de source pour la masquer ou l'afficher. Les filtres FR/EN, période et type de source se trouvent dans la barre d'outils.
 - Les nouveaux articles sont marqués « NOUVEAU » pendant 30 minutes. Un compteur s'affiche sur l'onglet concerné.
 - Sur les articles en anglais, **Traduire** ouvre la version traduite en français.
 
-## Ajouter ou retirer une source
+## Modifier le catalogue de sources (pour tout le monde)
 
 Tout se trouve dans `js/sources.js`. Copiez une ligne existante, changez `id`, `name`, `url`, `cat`, `type` et `lang`, puis rechargez la page.
 Le format de chaque champ est décrit en tête du fichier.
