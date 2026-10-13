@@ -31,6 +31,8 @@
   const DISABLED_KEY = 'nexus.disabled'; // sources du catalogue retirées par l'utilisateur
   const RING = 2 * Math.PI * 23;
   const CONCURRENCY = 6;
+  const PAGE = 60; // cartes affichées d'un coup ; les suivantes arrivent en approchant du bas
+  let limit = PAGE;
   const GENERIC_TOPICS = new Set(['decompilation', 'decomp', 'reverse-engineering', 'recompilation', 'matching-decompilation', 'game', 'games', 'api']);
 
   // Icônes (tracés type Lucide, 24×24, trait).
@@ -106,8 +108,11 @@
     decoder.innerHTML = s;
     return decoder.value;
   };
-  /** Texte brut d'un fragment HTML (les balises et scripts ne sont jamais exécutés). */
-  const toText = (html) => (html ? (htmlParser.parseFromString(html, 'text/html').body.textContent || '').replace(/\s+/g, ' ').trim() : '');
+  /** Texte brut d'un fragment HTML : balises retirées, entités décodées (rien n'est interprété ni exécuté).
+   *  Volontairement sans DOMParser : appelé des centaines de fois par rafraîchissement. */
+  const toText = (html) => (html
+    ? decode(String(html).replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, ' ').replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim()
+    : '');
   const cleanSummary = (s) =>
     s
       .replace(/\s*submitted by\s+\/u\/\S+.*$/i, '')
@@ -339,9 +344,14 @@
 
   function parseFeed(text, url) {
     const doc = parseXml(text);
-    const entries = [...doc.getElementsByTagName('item'), ...doc.getElementsByTagName('entry')];
-    if (!entries.length && !doc.querySelector('rss, feed, RDF, channel')) throw new Error('Aucun article trouvé dans la réponse');
-    return entries.map((el) => {
+    const all = [...doc.getElementsByTagName('item'), ...doc.getElementsByTagName('entry')];
+    if (!all.length && !doc.querySelector('rss, feed, RDF, channel')) throw new Error('Aucun article trouvé dans la réponse');
+    // Certains flux contiennent des centaines d'articles (OpenAI : plus de 1 000) : on ne détaille que les plus récents.
+    const entries = all
+      .map((el) => ({ el, date: parseDate(kidText(el, 'pubDate', 'published', 'updated', 'dc:date', 'a10:updated')) }))
+      .sort((a, b) => b.date - a.date)
+      .slice(0, 60);
+    return entries.map(({ el, date }) => {
       const content = kidText(el, 'content:encoded', 'content');
       const desc = kidText(el, 'description', 'summary', 'media:description');
       const link = safeUrl(entryLink(el), url);
@@ -349,7 +359,7 @@
       return {
         title: (/<[a-z]/i.test(rawTitle) ? toText(rawTitle) : decode(rawTitle)).replace(/\s+/g, ' ').trim(),
         link,
-        date: parseDate(kidText(el, 'pubDate', 'published', 'updated', 'dc:date', 'a10:updated')),
+        date,
         summary: clip(cleanSummary(toText(desc || content)), 280),
         image: entryImage(el, content || desc, link || url),
       };
@@ -517,6 +527,7 @@
     schedule();
     renderBody();
     updateChrome();
+    pulseSync();
     if (fresh.length) notifyNew(fresh.filter((it) => SRC[it.src]));
     else if (manual) toast('Synchronisé', 'Aucun nouvel article depuis la dernière vérification.');
     if (state.again) {
@@ -597,6 +608,8 @@
     return state.favs[id] || null;
   }
 
+  const favButtons = (id) => [...document.querySelectorAll('.fav')].filter((b) => b.dataset.v === id);
+
   function toggleFav(id) {
     if (state.favs[id]) {
       const removed = state.favs[id];
@@ -608,6 +621,13 @@
         renderBody();
         updateChrome();
       });
+      // Dans l'onglet Favoris, la carte se dématérialise avant de disparaître.
+      const card = state.tab === 'favoris' && !reduceMotion.matches ? favButtons(id)[0]?.closest('.card') : null;
+      if (card) {
+        card.classList.add('leaving');
+        setTimeout(() => { renderBody(); updateChrome(); }, 340);
+        return;
+      }
     } else {
       const it = findItem(id);
       if (!it) return;
@@ -617,6 +637,7 @@
     }
     renderBody();
     updateChrome();
+    if (state.favs[id]) favButtons(id).forEach((b) => b.classList.add('pop'));
   }
 
   /** Nettoie un favori venu d'un fichier importé : seuls les champs connus, liens http(s) uniquement. */
@@ -837,7 +858,7 @@
       foot.push(`<span class="push">${extLink(`https://translate.google.com/translate?sl=auto&tl=fr&u=${encodeURIComponent(it.link)}`, `${icon('translate')}Traduire`, 'Ouvrir l’article traduit en français')}</span>`);
     }
     foot.push(favBtn(it));
-    return `<article class="card${fresh ? ' is-new' : ''}" data-src="${esc(src.id)}" style="--h:${hue(src.name)};--c:${cat.color};--i:${Math.min(i, 18)}">
+    return `<article class="card${fresh ? ' is-new' : ''}" data-src="${esc(src.id)}" data-key="${esc(it.id)}" style="--h:${hue(src.name)};--c:${cat.color};--i:${Math.min(i, 18)}">
       ${fresh ? '<span class="new-pill">NOUVEAU</span>' : ''}
       <div class="media">${it.image ? `<img src="${esc(it.image)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : phHTML(src)}</div>
       <div class="body">
@@ -858,7 +879,7 @@
     const tag = it.archived
       ? '<span class="tag-live tag-archived" title="Dépôt archivé : plus maintenu">ARCHIVÉ</span>'
       : active ? '<span class="tag-live" title="Code modifié cette semaine">ACTIF</span>' : '';
-    return `<article class="card repo" data-src="${esc(src.id)}" style="--h:${hue(name)};--c:${cat.color};--i:${Math.min(i, 18)}">
+    return `<article class="card repo" data-src="${esc(src.id)}" data-key="${esc(it.id)}" style="--h:${hue(name)};--c:${cat.color};--i:${Math.min(i, 18)}">
       <div class="body">
         <div class="r-head">
           <img class="av" src="${esc(it.image)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">
@@ -917,10 +938,10 @@
     const srcs = newsSources(catId);
     const all = newsItems(catId);
     const items = filterItems(all);
-    const shown = items.slice(0, 200);
+    const shown = items.slice(0, limit);
     return `${chipsHTML(catId, srcs, all)}
       <div class="count-line"><span><b>${items.length}</b> article${items.length > 1 ? 's' : ''}${items.length !== all.length ? ` sur ${all.length}` : ''}</span></div>
-      ${shown.length ? `<div class="grid ${state.view}">${shown.map(cardHTML).join('')}</div>` : emptyHTML(srcs, all.length)}`;
+      ${shown.length ? `<div class="grid ${state.view}">${shown.map(cardHTML).join('')}</div>${moreHTML(items.length - shown.length)}` : emptyHTML(srcs, all.length)}`;
   }
 
   function projectsHTML(catId) {
@@ -934,8 +955,13 @@
       return `GitHub interrogé ${ago(r.at)} · ${[].concat(s.url).length} recherches · prochaine mise à jour ${next > Date.now() ? ago(next) : 'au prochain cycle'}${r.error ? ` · ⚠ ${esc(r.error)}` : ''}`;
     }).join('');
     return `<div class="count-line"><span><b>${items.length}</b> projet${items.length > 1 ? 's' : ''}${info ? ` · ${info}` : ''}</span></div>
-      ${items.length ? `<div class="grid">${items.map(repoHTML).join('')}</div>` : emptyHTML(srcs, all.length)}`;
+      ${items.length ? `<div class="grid">${items.slice(0, limit).map(repoHTML).join('')}</div>${moreHTML(items.length - limit)}` : emptyHTML(srcs, all.length)}`;
   }
+
+  /** Bouton « Afficher plus » ; il se déclenche aussi tout seul en approchant du bas (voir setupReveal). */
+  const moreHTML = (left) => (left > 0
+    ? `<div id="more" class="more"><button type="button" class="btn ghost" data-act="more">${icon('plus')}Afficher plus <span>(${left} restant${left > 1 ? 's' : ''})</span></button></div>`
+    : '');
 
   function favoritesHTML() {
     const all = Object.values(state.favs);
@@ -945,7 +971,7 @@
     }
     const items = filterItems(all, 'favs').sort(state.favSort === 'date' ? (a, b) => (b.date || 0) - (a.date || 0) : (a, b) => b.savedAt - a.savedAt);
     return `<div class="count-line"><span><b>${items.length}</b> favori${items.length > 1 ? 's' : ''}${items.length !== all.length ? ` sur ${all.length}` : ''} · enregistrés dans ce navigateur</span></div>
-      ${items.length ? `<div class="grid">${items.map((it, i) => (it.repo ? repoHTML(it, i) : cardHTML(it, i))).join('')}</div>` : emptyHTML([], all.length)}`;
+      ${items.length ? `<div class="grid">${items.slice(0, limit).map((it, i) => (it.repo ? repoHTML(it, i) : cardHTML(it, i))).join('')}</div>${moreHTML(items.length - limit)}` : emptyHTML([], all.length)}`;
   }
 
   function radarHTML() {
@@ -1199,10 +1225,12 @@
     if (state.tab === 'radar') html += '<div id="ticker" class="ticker"></div>';
     $('#head').innerHTML = html;
     tickerSig = '';
+    syncPills($('#head'));
   }
 
   let lastBody = '';
   function renderBody(enter = false) {
+    if (enter) limit = PAGE; // nouvel onglet ou nouveaux filtres : on repart des premières cartes
     let html;
     if (state.tab === 'radar') html = radarHTML();
     else if (state.tab === 'sources') html = sourcesHTML();
@@ -1220,6 +1248,7 @@
     const body = $('#body');
     body.classList.toggle('enter', enter);
     body.innerHTML = html;
+    setupReveal(enter);
   }
 
   let renderTimer = 0;
@@ -1233,7 +1262,118 @@
   }
 
   function buildTabs() {
-    $('#tabs').innerHTML = TABS.map((t, i) => `<a class="tab" href="#${t.id}" role="tab" data-tab="${t.id}" style="--tc:${t.color}" title="${esc(t.long)} (touche ${i + 1})">${icon(t.icon)}<span>${esc(t.label)}</span><b class="badge" hidden></b></a>`).join('');
+    $('#tabs').innerHTML = TABS.map((t, i) => `<a class="tab" href="#${t.id}" role="tab" data-tab="${t.id}" style="--tc:${t.color};--n:${i}" title="${esc(t.long)} (touche ${i + 1})">${icon(t.icon)}<span>${esc(t.label)}</span><b class="badge" hidden></b></a>`).join('')
+      + '<span class="tab-ind" aria-hidden="true"></span>';
+  }
+
+  // ───────── Transitions ─────────
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+
+  /** Trait lumineux qui glisse sous l'onglet actif. */
+  function moveIndicator() {
+    const nav = $('#tabs');
+    const tab = nav.querySelector(`.tab[data-tab="${state.tab}"]`);
+    const ind = nav.querySelector('.tab-ind');
+    if (!tab || !ind) return;
+    ind.style.width = `${tab.offsetWidth - 10}px`; // -10 px : coin biseauté en bas à droite
+    ind.style.transform = `translate(${tab.offsetLeft}px, ${tab.offsetTop + tab.offsetHeight - 2}px)`;
+    if (!ind.classList.contains('ready')) requestAnimationFrame(() => ind.classList.add('ready'));
+    const box = nav.getBoundingClientRect();
+    const r = tab.getBoundingClientRect();
+    if (r.left < box.left || r.right > box.right) nav.scrollTo({ left: tab.offsetLeft - 16, behavior: reduceMotion.matches ? 'auto' : 'smooth' });
+  }
+
+  /** Repère glissant des sélecteurs (FR / EN, tri, vue…). */
+  function syncPills(root = document) {
+    for (const group of root.querySelectorAll('.seg, .subnav')) {
+      let pill = group.querySelector(':scope > .pill');
+      if (!pill) {
+        pill = document.createElement('span');
+        pill.className = 'pill';
+        pill.setAttribute('aria-hidden', 'true');
+        group.prepend(pill);
+      }
+      const on = group.querySelector(':scope > button.on');
+      if (!on || !on.offsetWidth) { pill.style.opacity = '0'; continue; }
+      pill.style.opacity = '1';
+      pill.style.width = `${on.offsetWidth}px`;
+      pill.style.transform = `translateX(${on.offsetLeft}px)`;
+      if (!pill.classList.contains('ready')) requestAnimationFrame(() => pill.classList.add('ready'));
+    }
+  }
+
+  /** Bande néon qui balaie l'écran pendant un changement d'onglet. */
+  function warp() {
+    if (reduceMotion.matches) return;
+    const el = $('#warp');
+    el.classList.remove('run');
+    void el.offsetWidth; // relance l'animation
+    el.classList.add('run');
+  }
+
+  /** Change de page avec une View Transition (glissement selon le sens de navigation). */
+  let transitions = 0;
+  function transition(dir, update) {
+    warp();
+    if (!document.startViewTransition || reduceMotion.matches || document.hidden) { update(); return; }
+    const root = document.documentElement;
+    root.dataset.dir = dir;
+    root.classList.add('vt'); // nomme les zones animées le temps de la transition
+    transitions++;
+    const vt = document.startViewTransition(update);
+    vt.ready.catch(() => {}); // transition remplacée par une plus récente (clics rapides) : rien à signaler
+    vt.finished.finally(() => {
+      if (--transitions === 0) root.classList.remove('vt');
+    });
+  }
+
+  /** Éclair le long de l'en-tête quand une synchronisation se termine. */
+  function pulseSync() {
+    const top = $('.top');
+    top.classList.remove('synced');
+    void top.offsetWidth;
+    top.classList.add('synced');
+  }
+
+  // Les cartes se matérialisent quand elles entrent à l'écran ; celles déjà vues restent en place
+  // quand la liste est redessinée (nouvelles données, recherche…).
+  const revealed = new Set();
+  let revealer = null;
+  let moreWatcher = null;
+  function setupReveal(reset) {
+    if (reset) revealed.clear();
+    revealer?.disconnect();
+    moreWatcher?.disconnect();
+    const more = $('#more');
+    if (more && 'IntersectionObserver' in window) {
+      moreWatcher = new IntersectionObserver((entries) => {
+        if (!entries.some((e) => e.isIntersecting)) return;
+        moreWatcher.disconnect();
+        limit += PAGE;
+        renderBody();
+      }, { rootMargin: '0px 0px 700px 0px' });
+      moreWatcher.observe(more);
+    }
+    const cards = document.querySelectorAll('#body .card[data-key]');
+    if (reduceMotion.matches || !('IntersectionObserver' in window)) {
+      cards.forEach((c) => c.classList.add('in', 'static'));
+      return;
+    }
+    revealer = new IntersectionObserver((entries) => {
+      let k = 0;
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        const card = e.target;
+        card.style.setProperty('--d', `${Math.min(k++, 12) * 55}ms`);
+        card.classList.add('in');
+        revealed.add(card.dataset.key);
+        revealer.unobserve(card);
+      }
+    }, { rootMargin: '0px 0px -30px 0px' });
+    for (const card of cards) {
+      if (revealed.has(card.dataset.key)) card.classList.add('in', 'static');
+      else revealer.observe(card);
+    }
   }
 
   function updateChrome() {
@@ -1362,6 +1502,7 @@
     renderHead();
     renderBody(enter);
     updateChrome();
+    moveIndicator();
   }
 
   function focusAddForm() {
@@ -1373,21 +1514,30 @@
 
   window.addEventListener('hashchange', () => {
     const before = state.tab;
+    const beforeSub = state.sub;
     parseHash();
     if (state.tab !== before) state.q = '';
-    go();
-    window.scrollTo({ top: 0 });
-    if (state.tab === 'sources' && state.addOpen) focusAddForm();
+    const order = (id) => TABS.findIndex((t) => t.id === id);
+    const forward = order(state.tab) > order(before) || (state.tab === before && state.sub === 'projects' && beforeSub !== 'projects');
+    transition(forward ? 'next' : 'prev', () => {
+      go();
+      window.scrollTo({ top: 0 });
+      if (state.tab === 'sources' && state.addOpen) focusAddForm();
+    });
   });
 
   document.addEventListener('click', (e) => {
     const el = e.target.closest('[data-act]');
     if (!el) return;
     const { act, v } = el.dataset;
-    const markSeg = () => el.parentElement.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b === el));
+    const markSeg = () => {
+      el.parentElement.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b === el));
+      syncPills(el.parentElement.parentElement);
+    };
     switch (act) {
       case 'sub':
-        location.hash = v === 'projects' ? `${state.tab}/projets` : state.tab;
+        markSeg(); // le repère glisse, puis la page change
+        setTimeout(() => { location.hash = v === 'projects' ? `${state.tab}/projets` : state.tab; }, reduceMotion.matches ? 0 : 170);
         return;
       case 'lang': state.lang = v; markSeg(); break;
       case 'view': state.view = v; markSeg(); break;
@@ -1424,6 +1574,7 @@
         form.hidden = !form.hidden;
         state.addOpen = !form.hidden;
         el.setAttribute('aria-expanded', String(state.addOpen));
+        syncPills(form);
         focusAddForm();
         return;
       }
@@ -1455,6 +1606,10 @@
         return;
       case 'enable-all':
         setEnabled([...state.disabled], true);
+        return;
+      case 'more':
+        limit += PAGE;
+        renderBody();
         return;
       case 'retry':
         if (state.results[v]) state.results[v].at = 0;
@@ -1558,6 +1713,13 @@
     buildTabs();
     setupControls();
     go(true); // affiche tout de suite le dernier état connu
+    // Les repères (onglet actif, sélecteurs) suivent la mise en page : redimensionnement, polices chargées.
+    let resizeTimer = 0;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => { moveIndicator(); syncPills(); }, 120);
+    });
+    document.fonts?.ready.then(() => { moveIndicator(); syncPills(); });
     const relay = await detectRelay();
     state.relay = !!relay;
     state.hosted = !!relay?.hosted;
