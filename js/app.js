@@ -49,6 +49,11 @@
   const FAVS_KEY = 'nexus.favs';
   const CUSTOM_KEY = 'nexus.custom';
   const DISABLED_KEY = 'nexus.disabled'; // sources du catalogue retirées par l'utilisateur
+  const PAGES_KEY = 'nexus.pages'; // pages perso (F1, Foot, Politique…)
+  const THEMES = window.NEXUS_THEMES || []; // modèles de pages (js/themes.js)
+  const PAGE_ICONS = ['news', 'landmark', 'vote', 'users', 'car', 'flag', 'ball', 'trophy', 'dumbbell', 'chart', 'briefcase', 'film', 'music', 'games', 'rocket', 'leaf', 'heart', 'book', 'globe', 'star', 'ai', 'chip', 'shield', 'chat'];
+  const PAGE_COLORS = ['#00e5ff', '#4d8dff', '#8b5cf6', '#ff2bd6', '#ff4d6d', '#f97316', '#ffb020', '#ffd34d', '#a3ff12', '#5eead4'];
+  const MAX_PAGES = 20;
   const RING = 2 * Math.PI * 23;
   const CONCURRENCY = 6;
   const PAGE = 60; // cartes affichées d'un coup ; les suivantes arrivent en approchant du bas
@@ -91,6 +96,26 @@
     alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/>',
     info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
     filter: '<path d="M22 3H2l8 9.46V19l4 2v-8.54z"/>',
+    edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+    x: '<path d="M18 6 6 18M6 6l12 12"/>',
+    // Icônes proposées pour les pages perso
+    news: '<path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8M15 18h-5M10 6h8v4h-8z"/>',
+    landmark: '<path d="M3 22h18M6 18v-7M10 18v-7M14 18v-7M18 18v-7M12 2l8 5H4z"/>',
+    vote: '<path d="m9 12 2 2 4-4"/><path d="M5 7c0-1.1.9-2 2-2h10a2 2 0 0 1 2 2v12H5V7z"/><path d="M22 19H2"/>',
+    users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+    car: '<path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/>',
+    flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22v-7"/>',
+    ball: '<circle cx="12" cy="12" r="10"/><path d="m12 7 4 3-1.5 5h-5L8 10z"/><path d="M12 7V2M16 10l5-2M14.5 15l3 4.5M9.5 15l-3 4.5M8 10 3 8"/>',
+    trophy: '<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6M18 9h1.5a2.5 2.5 0 0 0 0-5H18M4 22h16M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/>',
+    chart: '<path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/>',
+    briefcase: '<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>',
+    film: '<rect x="2" y="2" width="20" height="20" rx="2.18"/><path d="M7 2v20M17 2v20M2 12h20M2 7h5M2 17h5M17 17h5M17 7h5"/>',
+    music: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+    rocket: '<path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/>',
+    leaf: '<path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/>',
+    heart: '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>',
+    book: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V2H6.5A2.5 2.5 0 0 0 4 4.5v15z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/>',
+    dumbbell: '<path d="m6.5 6.5 11 11M21 21l-1-1M3 3l1 1M18 22l4-4M2 6l4-4M3 10l7-7M14 21l7-7"/>',
   };
   const icon = (name) => `<svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
 
@@ -192,25 +217,90 @@
     try { localStorage.setItem(key, JSON.stringify(value)); return true; } catch { return false; }
   };
 
-  // ───────── Sources perso (ajoutées depuis l'onglet Sources) ─────────
+  // ───────── Pages perso (menu → « Créer une page ») ─────────
+  // Une page perso est une rubrique comme les autres : ses sources (perso) l'alimentent,
+  // elle apparaît dans le menu, le radar et le bandeau « en direct ».
+  const RESERVED = new Set(TABS.map((t) => t.id));
+  const isColor = (c) => /^#[0-9a-f]{6}$/i.test(String(c || ''));
+  const slugify = (s) => norm(s).replace(/[^a-z0-9]+/g, '-').replace(/^-+/, '').slice(0, 24).replace(/-+$/, '') || 'page';
+
+  /** Page lue du stockage ou d'une sauvegarde : seuls les champs connus, valeurs vérifiées. */
+  function cleanPage(p) {
+    const label = String(p?.label || '').replace(/\s+/g, ' ').trim().slice(0, 30);
+    const id = String(p?.id || '');
+    if (!label || !/^[a-z0-9-]{1,24}$/.test(id) || RESERVED.has(id)) return null;
+    return {
+      id, label,
+      icon: PAGE_ICONS.includes(p.icon) ? p.icon : 'news',
+      color: isColor(p.color) ? p.color.toLowerCase() : PAGE_COLORS[0],
+      createdAt: Number(p.createdAt) || Date.now(),
+    };
+  }
+
+  function registerPage(p) {
+    const cat = { id: p.id, label: p.label, long: p.label, icon: p.icon, color: p.color, custom: true };
+    CATEGORIES.push(cat);
+    CAT[cat.id] = cat;
+    TABS.splice(TABS.findIndex((t) => t.id === 'favoris'), 0, cat); // après les rubriques, avant Favoris
+    TAB[cat.id] = cat;
+  }
+
+  function unregisterPage(id) {
+    const cat = CAT[id];
+    if (!cat?.custom) return;
+    CATEGORIES.splice(CATEGORIES.indexOf(cat), 1);
+    TABS.splice(TABS.indexOf(cat), 1);
+    delete CAT[id];
+    delete TAB[id];
+  }
+
+  let pagesRaw = readJSON(PAGES_KEY, []);
+  if (!Array.isArray(pagesRaw)) pagesRaw = [];
+  pagesRaw = pagesRaw.map(cleanPage).filter((p, i, all) => p && all.findIndex((q) => q?.id === p.id) === i).slice(0, MAX_PAGES);
+  pagesRaw.forEach(registerPage);
+
+  // ───────── Sources perso (page Sources, pages perso) ─────────
   const keywordsRe = (text) => {
     const words = String(text || '').split(',').map((w) => w.trim()).filter(Boolean);
     return words.length ? new RegExp(words.map(escapeRe).join('|'), 'i') : undefined;
   };
   const hnUrl = (query) =>
     `https://hn.algolia.com/api/v1/search_by_date?query=${encodeURIComponent(query)}&tags=story&numericFilters=${encodeURIComponent('points>5')}&hitsPerPage=40`;
+  /** Recherche Google Actualités (flux RSS) : la presse qui parle de ces mots, en français ou en anglais. */
+  const newsUrl = (q, lang) => (lang === 'en'
+    ? `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=en-US&gl=US&ceid=US:en`
+    : `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=fr&gl=FR&ceid=FR:fr`);
+  /** « F1, Formule 1 » → ['F1', 'Formule 1'] : une recherche par élément (l'un ou l'autre). */
+  const splitQuery = (text) => String(text || '').split(',').map((w) => w.replace(/\s+/g, ' ').trim().slice(0, 60)).filter(Boolean).slice(0, 6);
+  let uidSeq = 0;
+  const uid = () => `perso-${Date.now().toString(36)}-${(uidSeq++).toString(36)}`;
 
   let customRaw = readJSON(CUSTOM_KEY, []);
   if (!Array.isArray(customRaw)) customRaw = [];
-  customRaw = customRaw.filter((r) => r && r.id && safeUrl(r.url) && CAT[r.cat]);
+  customRaw = customRaw.filter((r) => r && r.id && CAT[r.cat] && [].concat(r.url).length && [].concat(r.url).every((u) => safeUrl(u)));
 
   function registerSource(raw) {
-    const src = { ...raw, kind: raw.kind === 'hn' ? 'hn' : 'rss', type: 'perso', custom: true, include: keywordsRe(raw.keywords) };
+    const kind = ['hn', 'news'].includes(raw.kind) ? raw.kind : 'rss';
+    // Sources des modèles de pages : type vérifié (presse, officiel) ; sinon « perso ».
+    const type = TYPES[raw.type] && raw.type !== 'projet' ? raw.type : 'perso';
+    const src = { ...raw, kind, type, custom: true, include: keywordsRe(raw.keywords) };
+    if (kind === 'news') Object.assign(src, { minAge: 300, limit: 40 }); // résultats de recherche : inutile d'interroger Google chaque minute
     SOURCES.push(src);
     SRC[src.id] = src;
     return src;
   }
   customRaw.forEach(registerSource);
+
+  /** Source « mots-clés » d'une page : une recherche Google Actualités par mot-clé. */
+  function newsSourceRaw(cat, query, lang) {
+    const terms = splitQuery(query);
+    if (!terms.length) return null;
+    return {
+      id: uid(), cat, kind: 'news', name: `Google Actualités · ${clip(terms.join(', '), 40)}`,
+      site: `https://news.google.com/search?q=${encodeURIComponent(terms[0])}&hl=${lang === 'en' ? 'en-US' : 'fr'}`,
+      url: terms.map((t) => newsUrl(t, lang)), query: terms.join(', '), lang: lang === 'en' ? 'en' : 'fr', keywords: '', addedAt: Date.now(),
+    };
+  }
 
   // Sources du catalogue retirées : ni affichées ni interrogées (toutes actives par défaut).
   const savedDisabled = readJSON(DISABLED_KEY, []);
@@ -265,6 +355,7 @@
   const storageWarning = () => toast('Enregistrement impossible', 'Le navigateur bloque le stockage local (navigation privée ?).');
   const saveFavs = () => writeJSON(FAVS_KEY, state.favs) || storageWarning();
   const saveCustom = () => writeJSON(CUSTOM_KEY, customRaw) || storageWarning();
+  const savePages = () => writeJSON(PAGES_KEY, pagesRaw) || storageWarning();
   const saveDisabled = () => writeJSON(DISABLED_KEY, [...state.disabled]) || storageWarning();
 
   // ───────── Récupération des flux ─────────
@@ -379,15 +470,21 @@
       const desc = kidText(el, 'description', 'summary', 'media:description');
       const link = safeUrl(entryLink(el), url);
       const rawTitle = kidText(el, 'title');
-      return {
-        title: (/<[a-z]/i.test(rawTitle) ? toText(rawTitle) : decode(rawTitle)).replace(/\s+/g, ' ').trim(),
-        link,
-        date,
-        summary: clip(cleanSummary(toText(desc || content)), 280),
-        image: entryImage(el, content || desc, link || url),
-      };
+      // <source> d'un item RSS : le média d'origine quand le flux est un agrégateur (Google Actualités…).
+      const source = el.nodeName === 'item' ? decode(kidText(el, 'source')).replace(/\s+/g, ' ') : '';
+      let title = (/<[a-z]/i.test(rawTitle) ? toText(rawTitle) : decode(rawTitle)).replace(/\s+/g, ' ').trim();
+      if (source && title.endsWith(` - ${source}`)) title = title.slice(0, -(source.length + 3));
+      const via = source.replace(/[\s\-–|·:]+$/, '').slice(0, 80); // « JP blog - » → « JP blog »
+      let summary = clip(cleanSummary(toText(desc || content)), 280);
+      if (summary && norm(summary).startsWith(norm(title)) && summary.length - title.length < 80) summary = ''; // simple redite du titre
+      const it = { title, link, date, summary, image: entryImage(el, content || desc, link || url) };
+      if (via) it.via = via;
+      return it;
     });
   }
+
+  /** Recherche Google Actualités : le résumé n'est qu'une liste de titres, on ne garde que l'article. */
+  const parseNews = (text, url) => parseFeed(text, url).map((it) => ({ ...it, summary: '' }));
 
   /** Titre d'un flux RSS/Atom (pour nommer automatiquement une source perso). */
   function feedTitle(text) {
@@ -444,7 +541,7 @@
     }));
   }
 
-  const PARSERS = { rss: parseFeed, hn: parseHN, github: parseGitHub };
+  const PARSERS = { rss: parseFeed, news: parseNews, hn: parseHN, github: parseGitHub };
 
   function normId(link) {
     try {
@@ -618,7 +715,7 @@
         if (maxAge !== Infinity && (!it.date || now - it.date > maxAge)) return false;
       }
       if (tokens.length) {
-        const hay = norm(`${it.title} ${it.summary} ${src.name} ${it.host || ''} ${(it.topics || []).join(' ')} ${it.language || ''}`);
+        const hay = norm(`${it.title} ${it.summary} ${src.name} ${it.via || ''} ${it.host || ''} ${(it.topics || []).join(' ')} ${it.language || ''}`);
         if (!tokens.every((t) => hay.includes(t))) return false;
       }
       return true;
@@ -675,13 +772,13 @@
       srcInfo: { name: String(info.name || '').slice(0, 60), cat: CAT[info.cat] ? info.cat : 'info', lang: info.lang === 'fr' ? 'fr' : 'en', type: TYPES[info.type] ? info.type : 'perso', mono: info.mono ? String(info.mono).slice(0, 4) : undefined },
       repo: !!f.repo, stars: Number(f.stars) || 0, forks: Number(f.forks) || 0, language: String(f.language || ''),
       topics: Array.isArray(f.topics) ? f.topics.map(String).slice(0, 12) : [], archived: !!f.archived,
-      host: String(f.host || ''), points: f.points == null ? undefined : Number(f.points) || 0,
+      host: String(f.host || ''), via: f.via ? String(f.via).slice(0, 80) : undefined, points: f.points == null ? undefined : Number(f.points) || 0,
       comments: Number(f.comments) || 0, discuss: f.discuss ? safeUrl(f.discuss) || undefined : undefined,
     };
   }
 
   function exportData() {
-    const data = { app: 'nexus', version: 1, exportedAt: new Date().toISOString(), favorites: Object.values(state.favs), sources: customRaw, disabled: [...state.disabled] };
+    const data = { app: 'nexus', version: 1, exportedAt: new Date().toISOString(), pages: pagesRaw, favorites: Object.values(state.favs), sources: customRaw, disabled: [...state.disabled] };
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
     a.download = `nexus-sauvegarde-${new Date().toISOString().slice(0, 10)}.json`;
@@ -689,27 +786,40 @@
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-    toast('Sauvegarde exportée', `${data.favorites.length} favori(s), ${data.sources.length} source(s) perso et ${data.disabled.length} source(s) retirée(s) dans le fichier téléchargé.`);
+    toast('Sauvegarde exportée', `${data.pages.length ? `${data.pages.length} page(s) perso, ` : ''}${data.favorites.length} favori(s), ${data.sources.length} source(s) perso et ${data.disabled.length} source(s) retirée(s) dans le fichier téléchargé.`);
   }
 
   async function importData(file) {
     try {
       const data = JSON.parse(await file.text());
       if (data?.app !== 'nexus') throw new Error('Ce fichier n’est pas une sauvegarde NEXUS.');
+      let np = 0;
       let nf = 0;
       let ns = 0;
+      // Les pages d'abord : leurs sources s'y rattachent ensuite.
+      for (const p of Array.isArray(data.pages) ? data.pages : []) {
+        const page = cleanPage(p);
+        if (!page || CAT[page.id] || pagesRaw.length >= MAX_PAGES) continue;
+        pagesRaw.push(page);
+        registerPage(page);
+        np++;
+      }
       for (const f of Array.isArray(data.favorites) ? data.favorites : []) {
         const fav = f && cleanFav(f);
         if (fav && !state.favs[fav.id]) { state.favs[fav.id] = fav; nf++; }
       }
       for (const r of Array.isArray(data.sources) ? data.sources : []) {
-        const url = r && safeUrl(r.url);
-        if (!url || !CAT[r.cat] || SOURCES.some((s) => [].concat(s.url).includes(url))) continue;
+        if (!r || !CAT[r.cat]) continue;
+        const kind = ['hn', 'news'].includes(r.kind) ? r.kind : 'rss';
+        const urls = [].concat(r.url).map((u) => safeUrl(u)).filter(Boolean).slice(0, kind === 'news' ? 6 : 1);
+        if (!urls.length || SOURCES.some((s) => s.cat === r.cat && [].concat(s.url).includes(urls[0]))) continue;
         const raw = {
-          id: `perso-${Date.now().toString(36)}-${ns}`, cat: r.cat, name: String(r.name || hostOf(url)).slice(0, 60),
-          site: safeUrl(r.site) || `${new URL(url).origin}/`, url, kind: r.kind === 'hn' ? 'hn' : 'rss',
+          id: uid(), cat: r.cat, name: String(r.name || hostOf(urls[0])).slice(0, 60),
+          site: safeUrl(r.site) || `${new URL(urls[0]).origin}/`, url: kind === 'news' ? urls : urls[0], kind,
           lang: r.lang === 'fr' ? 'fr' : 'en', keywords: String(r.keywords || '').slice(0, 300), addedAt: Date.now(),
         };
+        if (kind === 'news') raw.query = splitQuery(r.query).join(', ');
+        if (TYPES[r.type] && !['projet', 'perso'].includes(r.type)) raw.type = r.type;
         customRaw.push(raw);
         registerSource(raw);
         ns++;
@@ -722,9 +832,11 @@
         nd++;
       }
       saveFavs();
+      savePages();
       saveCustom();
       saveDisabled();
-      toast('Import terminé', `${nf} favori(s), ${ns} source(s) perso et ${nd} source(s) retirée(s) ajoutés.`);
+      toast('Import terminé', `${np ? `${np} page(s) perso, ` : ''}${nf} favori(s), ${ns} source(s) perso et ${nd} source(s) retirée(s) ajoutés.`);
+      buildMenu();
       renderHead();
       renderBody();
       updateChrome();
@@ -774,7 +886,9 @@
         }
         site = `${new URL(input).origin}/`;
       }
-      const existing = SOURCES.find((s) => [].concat(s.url).includes(url));
+      // Un même flux peut servir à plusieurs pages perso, mais pas deux fois à la même ; jamais en double du catalogue.
+      const cat = CAT[data.cat] ? data.cat : 'info';
+      const existing = SOURCES.find((s) => [].concat(s.url).includes(url) && (!s.custom || s.cat === cat));
       if (existing) {
         throw new Error(isActive(existing)
           ? `Cette source est déjà dans votre liste (${existing.name}).`
@@ -786,7 +900,7 @@
       const kept = re ? items.filter((it) => re.test(`${it.title} ${it.summary}`)) : items;
       const name = String(data.name || '').trim() || (kind === 'hn' ? `HN · ${query}` : feedTitle(text) || hostOf(url));
       const lang = data.lang === 'auto' ? (kind === 'hn' ? 'en' : guessLang(text, items)) : data.lang === 'fr' ? 'fr' : 'en';
-      state.draft = { kind, url, site, cat: CAT[data.cat] ? data.cat : 'info', lang, name: clip(name, 60), keywords: String(data.keywords || '').trim() };
+      state.draft = { kind, url, site, cat, lang, name: clip(name, 60), keywords: String(data.keywords || '').trim() };
       status.className = 'add-status ok';
       status.textContent = 'Source valide';
       preview.innerHTML = previewHTML(state.draft, items, kept, alternatives);
@@ -801,12 +915,12 @@
   function confirmAdd() {
     const d = state.draft;
     if (!d) return;
-    const raw = { id: `perso-${Date.now().toString(36)}`, cat: d.cat, name: d.name, site: d.site, url: d.url, kind: d.kind, lang: d.lang, keywords: d.keywords, addedAt: Date.now() };
-    customRaw.push(raw);
-    registerSource(raw);
+    const raw = { id: uid(), cat: d.cat, name: d.name, site: d.site, url: d.url, kind: d.kind, lang: d.lang, keywords: d.keywords, addedAt: Date.now() };
+    addSource(raw);
     saveCustom();
     state.draft = null;
     state.addOpen = false;
+    buildMenu();
     renderHead();
     renderBody();
     updateChrome();
@@ -814,17 +928,31 @@
     refresh();
   }
 
-  function deleteSource(id) {
+  function addSource(raw) {
+    if (!raw) return;
+    customRaw.push(raw);
+    registerSource(raw);
+  }
+
+  /** Retire une source perso de la mémoire (sans enregistrer ni redessiner). */
+  function removeSource(id) {
     const src = SRC[id];
-    if (!src?.custom || !confirm(`Supprimer la source « ${src.name} » ?\nVos favoris qui en proviennent sont conservés.`)) return;
+    if (!src?.custom) return;
     customRaw = customRaw.filter((r) => r.id !== id);
     SOURCES.splice(SOURCES.indexOf(src), 1);
     delete SRC[id];
     delete state.results[id];
     state.hidden.delete(id);
+  }
+
+  function deleteSource(id) {
+    const src = SRC[id];
+    if (!src?.custom || !confirm(`Supprimer la source « ${src.name} » ?\nVos favoris qui en proviennent sont conservés.`)) return;
+    removeSource(id);
     saveCustom();
     pruneSeen();
     persist();
+    buildMenu();
     renderBody();
     updateChrome();
     toast('Source supprimée', src.name);
@@ -881,11 +1009,12 @@
       foot.push(`<span class="push">${extLink(`https://translate.google.com/translate?sl=auto&tl=fr&u=${encodeURIComponent(it.link)}`, `${icon('translate')}Traduire`, 'Ouvrir l’article traduit en français')}</span>`);
     }
     foot.push(favBtn(it));
-    return `<article class="card${fresh ? ' is-new' : ''}" data-src="${esc(src.id)}" data-key="${esc(it.id)}" style="--h:${hue(src.name)};--c:${cat.color};--i:${Math.min(i, 18)}">
+    const name = it.via || src.name; // article trouvé par Google Actualités : on affiche le vrai média
+    return `<article class="card${fresh ? ' is-new' : ''}" data-src="${esc(src.id)}" data-key="${esc(it.id)}" style="--h:${hue(name)};--c:${cat.color};--i:${Math.min(i, 18)}">
       ${fresh ? '<span class="new-pill">NOUVEAU</span>' : ''}
-      <div class="media">${it.image ? `<img src="${esc(it.image)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : phHTML(src)}</div>
+      <div class="media">${it.image ? `<img src="${esc(it.image)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : phHTML(it.via ? { name } : src)}</div>
       <div class="body">
-        <div class="meta"><span class="src">${esc(src.name)}</span>${typeBadge(src.type)}${timeTag(it.date)}</div>
+        <div class="meta"><span class="src"${it.via ? ` title="Trouvé via ${esc(src.name)}"` : ''}>${esc(name)}</span>${typeBadge(src.type)}${timeTag(it.date)}</div>
         <h3>${extLink(it.link, esc(it.title))}</h3>
         ${it.summary ? `<p class="sum">${esc(it.summary)}</p>` : ''}
         <div class="cf">${foot.join('')}</div>
@@ -924,7 +1053,13 @@
 
   const skeletons = (n) => `<div class="grid">${'<div class="sk"></div>'.repeat(n)}</div>`;
 
-  function emptyHTML(srcs, total) {
+  function emptyHTML(srcs, total, catId) {
+    if (!srcs.length && !total && CAT[catId]?.custom) {
+      return `<div class="empty">${icon('plus')}<b>Page vide pour l’instant</b>
+        <p>Suivez des mots-clés dans la presse avec Google Actualités, ou ajoutez n’importe quel site ou flux RSS.</p>
+        <div class="empty-actions"><button class="btn" data-act="edit-page">${icon('search')}Suivre des mots-clés</button>
+        <button class="btn ghost" data-act="add-source" data-v="${esc(catId)}">${icon('plus')}Ajouter un site</button></div></div>`;
+    }
     if (!srcs.length && !total) {
       return `<div class="empty">${icon('list')}<b>Aucune source active</b><p>Toutes les sources de cette rubrique ont été retirées.</p>
         <a class="btn" href="#sources">Gérer les sources</a></div>`;
@@ -964,7 +1099,7 @@
     const shown = items.slice(0, limit);
     return `${chipsHTML(catId, srcs, all)}
       <div class="count-line"><span><b>${items.length}</b> article${items.length > 1 ? 's' : ''}${items.length !== all.length ? ` sur ${all.length}` : ''}</span></div>
-      ${shown.length ? `<div class="grid ${state.view}">${shown.map(cardHTML).join('')}</div>${moreHTML(items.length - shown.length)}` : emptyHTML(srcs, all.length)}`;
+      ${shown.length ? `<div class="grid ${state.view}">${shown.map(cardHTML).join('')}</div>${moreHTML(items.length - shown.length)}` : emptyHTML(srcs, all.length, catId)}`;
   }
 
   function projectsHTML(catId) {
@@ -1062,13 +1197,14 @@
     const panels = perCat.map(({ c, items }) => {
       const n = unseen(c.id);
       const rows = items.slice(0, 7).map((it) => {
-        const s = SRC[it.src];
-        return `<a class="row${isNew(it) ? ' is-new' : ''}" href="${esc(it.link)}" target="_blank" rel="noopener noreferrer" style="--h:${hue(s.name)}">
-          ${timeTag(it.date, true)}<span><span class="s">${esc(s.name)}</span><span class="t">${esc(it.title)}</span></span></a>`;
+        const name = it.via || SRC[it.src].name;
+        return `<a class="row${isNew(it) ? ' is-new' : ''}" href="${esc(it.link)}" target="_blank" rel="noopener noreferrer" style="--h:${hue(name)}">
+          ${timeTag(it.date, true)}<span><span class="s">${esc(name)}</span><span class="t">${esc(it.title)}</span></span></a>`;
       }).join('');
       const srcs = newsSources(c.id);
       const waiting = srcs.some((s) => state.pending.has(s.id));
-      const none = srcs.length ? 'Aucun article pour le moment.' : 'Aucune source active : <a href="#sources">gérer les sources</a>.';
+      const none = srcs.length ? 'Aucun article pour le moment.'
+        : c.custom ? `Page vide : <a href="#${c.id}">ajoutez-lui des sources</a>.` : 'Aucune source active : <a href="#sources">gérer les sources</a>.';
       return `<section class="panel" style="--c:${c.color}">
         <header class="panel-h">${icon(c.icon)}<h2>${esc(c.label)}</h2>${n ? `<b class="badge">+${n}</b>` : ''}<a class="more" href="#${c.id}">Tout voir →</a></header>
         ${rows || (waiting ? '<div class="sk-row"></div>'.repeat(5) : `<div class="empty" style="margin:16px;padding:30px 16px"><p>${none}</p></div>`)}
@@ -1119,7 +1255,7 @@
     const bar = `<div class="catalog-bar">${icon('list')}<p><b>Catalogue :</b> ${catalog.length - removed} source${catalog.length - removed > 1 ? 's' : ''} active${catalog.length - removed > 1 ? 's' : ''} sur ${catalog.length}.
       ${removed ? '' : 'Toutes sont actives par défaut : « Retirer » masque une source partout et arrête de l’interroger.'}</p>
       ${removed ? `<button type="button" class="btn ghost" data-act="enable-all">${icon('undo')}Tout rétablir (${removed})</button>` : ''}</div>`;
-    const groups = CATEGORIES.map((c) => {
+    const groups = CATEGORIES.filter((c) => !c.custom).map((c) => { // les pages perso n'ont que des sources perso, listées plus haut
       const list = catalog.filter((s) => s.cat === c.id);
       const off = list.filter((s) => !isActive(s)).length;
       return `<section class="src-cat" style="--c:${c.color}"><h2>${icon(c.icon)}${esc(c.long)}<small>${list.length - off}/${list.length} actives</small></h2>
@@ -1146,6 +1282,7 @@
       'La recherche et des filtres par langue, date et type de source',
       'Des favoris conservés même quand l’article disparaît des flux',
       'Vos propres sources : un site, un flux RSS ou une recherche Hacker News',
+      'Vos propres pages sur n’importe quel sujet (F1, foot, politique…), avec des modèles prêts à l’emploi',
       'Le retrait des sources du catalogue qui ne vous intéressent pas',
       'La traduction en un clic des articles en anglais',
       'L’export et l’import de vos réglages pour changer d’appareil',
@@ -1156,6 +1293,7 @@
       ['Qu’est-ce qui est chargé depuis d’autres sites ?', 'Les images des articles (depuis leurs sites), les polices de caractères (Google Fonts) et, seulement si vous cliquez sur « Traduire », Google Traduction. Rien d’autre.'],
       ['Pourquoi un petit serveur ?', 'Les navigateurs interdisent à une page de lire directement les flux des autres sites. Le relais serveur.py les lit à sa place et garde une copie 20 secondes, sans rien enregistrer d’autre.'],
       ['Comment changer les sources ?', 'Page Sources : retirez une source du catalogue ou ajoutez la vôtre. Pour modifier le catalogue de tout le monde, éditez le fichier js/sources.js.'],
+      ['Puis-je suivre autre chose que la tech ?', 'Oui : menu → « Créer une page ». Partez d’un modèle (politique, F1, foot, voiture…) ou d’une page vide, choisissez son icône et sa couleur, puis suivez des mots-clés dans la presse (Google Actualités) ou ajoutez vos sites. La page reste dans votre navigateur.'],
     ];
     const files = [['js/app.js', 'l’application'], ['js/sources.js', 'le catalogue des sources'], ['css/style.css', 'le style'], ['serveur.py', 'le relais'], ['LICENSE', 'la licence']];
     const repo = safeUrl(PROJECT.repo || '');
@@ -1284,8 +1422,10 @@
     const t = TAB[state.tab];
     const cat = CAT[state.tab];
     document.documentElement.style.setProperty('--c', t.color);
-    const about = { projects: PROJECTS_ABOUT, play: PLAY_ABOUT }[state.sub] || t.about;
-    let html = `<div class="v-title"><span class="ico">${icon(t.icon)}</span><div><h1>${esc(t.long)}</h1><p class="v-sub">${esc(about)}</p></div></div>`;
+    const about = { projects: PROJECTS_ABOUT, play: PLAY_ABOUT }[state.sub]
+      || (cat?.custom ? 'Votre page perso, enregistrée dans ce navigateur. Ses sources apparaissent ci-dessous ; « Personnaliser » change son nom, son icône, sa couleur et ses mots-clés.' : t.about);
+    const edit = cat?.custom ? `<button type="button" class="btn ghost v-edit" data-act="edit-page">${icon('edit')}Personnaliser</button>` : '';
+    let html = `<div class="v-title"><span class="ico">${icon(t.icon)}</span><div><h1>${esc(t.long)}</h1><p class="v-sub">${esc(about)}</p></div>${edit}</div>`;
     if (cat?.projects) {
       const subs = [['news', 'Actualités'], ['projects', 'Projets GitHub']];
       if (state.tab === 'jeux') subs.push(['play', `${icon('play')}Jouer`]);
@@ -1346,15 +1486,29 @@
   let menuTimer = 0;
 
   function buildMenu() {
-    const split = 1 + CATEGORIES.length; // Radar + rubriques, puis Favoris, Sources, À propos
-    const item = (t, i) => `<a class="nav-item" href="#${t.id}" data-tab="${t.id}" style="--tc:${t.color};--n:${i + 1}" title="${esc(t.long)} (touche ${i + 1})">
+    let n = 0; // ordre d'apparition en cascade
+    const item = (t) => {
+      const i = TABS.indexOf(t);
+      const key = i < 9 ? i + 1 : 0; // touches 1 à 9 : les neuf premières pages
+      const count = t.custom ? SOURCES.filter((s) => s.cat === t.id).length : 0;
+      const hint = t.custom ? `Page perso · ${count ? `${count} source${count > 1 ? 's' : ''}` : 'vide'}` : MENU_HINTS[t.id] || t.long;
+      return `<a class="nav-item" href="#${t.id}" data-tab="${t.id}" style="--tc:${t.color};--n:${n++}" title="${esc(t.long)}${key ? ` (touche ${key})` : ''}">
         <span class="ni-ico">${icon(t.icon)}</span>
-        <span class="ni-text"><span class="ni-label">${esc(t.label)}</span><span class="ni-hint">${esc(MENU_HINTS[t.id] || t.long)}</span></span>
-        <b class="badge" hidden></b><kbd class="ni-key">${i + 1}</kbd>
+        <span class="ni-text"><span class="ni-label">${esc(t.label)}</span><span class="ni-hint">${esc(hint)}</span></span>
+        <b class="badge" hidden></b>${key ? `<kbd class="ni-key">${key}</kbd>` : ''}
       </a>`;
-    $('#nav').innerHTML = `<p class="nav-group" style="--n:0">Rubriques</p>${TABS.slice(0, split).map(item).join('')}`
-      + `<p class="nav-group" style="--n:${split}">NEXUS</p>${TABS.slice(split).map((t, i) => item(t, i + split)).join('')}`;
+    };
+    const group = (label) => `<p class="nav-group" style="--n:${n++}">${label}</p>`;
+    const pages = TABS.filter((t) => t.custom);
+    $('#nav').innerHTML = group('Rubriques') + TABS.filter((t) => t.id === 'radar' || (CAT[t.id] && !t.custom)).map(item).join('')
+      + group('Mes pages') + pages.map(item).join('')
+      + `<button type="button" class="nav-item nav-add" data-act="new-page" style="--n:${n++}"${pages.length >= MAX_PAGES ? ' disabled' : ''}>
+          <span class="ni-ico">${icon('plus')}</span>
+          <span class="ni-text"><span class="ni-label">Créer une page</span><span class="ni-hint">${pages.length ? 'Un autre sujet à suivre' : 'F1, foot, politique… le sujet de votre choix'}</span></span>
+        </button>`
+      + group('NEXUS') + TABS.filter((t) => ['favoris', 'sources', 'apropos'].includes(t.id)).map(item).join('');
     $('#menu-meta').textContent = `// ${TABS.length} pages`;
+    updateChrome();
   }
 
   function openMenu() {
@@ -1403,6 +1557,215 @@
     slot.hidden = !narrow.matches;
   }
   narrow.addEventListener('change', placeControls);
+
+  // ───────── Création / modification d'une page perso ─────────
+  const editor = $('#page-editor');
+  let editing = null; // id de la page modifiée ; null pour une nouvelle page
+  let editorTimer = 0;
+  let downOnVeil = false;
+
+  function editorHTML(page, theme) {
+    const isNew = !page;
+    const label = page?.label ?? theme?.label ?? '';
+    const ic = page?.icon ?? theme?.icon ?? 'news';
+    const color = page?.color ?? theme?.color ?? PAGE_COLORS[pagesRaw.length % PAGE_COLORS.length];
+    const news = page && SOURCES.find((s) => s.cat === page.id && s.kind === 'news');
+    const query = news?.query ?? theme?.query ?? '';
+    const qlang = news?.lang ?? 'fr';
+    const others = page ? SOURCES.filter((s) => s.cat === page.id && s.kind !== 'news') : [];
+    const presets = isNew ? `<section class="pe-sec">
+        <h3>${icon('star')}Partir d’un modèle</h3>
+        <div class="presets">${THEMES.map((t) => `<button type="button" class="preset${theme?.id === t.id ? ' on' : ''}" data-act="pick-preset" data-v="${t.id}" style="--pc:${t.color}" aria-pressed="${theme?.id === t.id}">${icon(t.icon)}${esc(t.label)}</button>`).join('')}
+          <button type="button" class="preset blank${theme ? '' : ' on'}" data-act="pick-preset" data-v="" aria-pressed="${!theme}">${icon('plus')}Page vide</button></div>
+      </section>` : '';
+    const recommended = isNew && theme?.sources?.length ? `<section class="pe-sec">
+        <h3>${icon('list')}Sources recommandées <em>${theme.sources.length} médias vérifiés</em></h3>
+        <div class="pe-srcs">${theme.sources.map((s, i) => `<label class="pe-src"><input type="checkbox" name="src" value="${i}" checked>
+          <span><b>${esc(s.name)}</b><small>${esc(hostOf(s.site || s.url))} · ${(s.lang || 'fr').toUpperCase()}${s.keywords ? ` · filtrée : ${esc(s.keywords)}` : ''}</small></span>${typeBadge(s.type || 'presse')}</label>`).join('')}</div>
+      </section>` : '';
+    const current = page ? `<section class="pe-sec">
+        <h3>${icon('list')}Sites suivis <em>${others.length}</em></h3>
+        <p class="pe-help">${others.length ? esc(others.map((s) => s.name).join(' · ')) : 'Aucun site pour l’instant.'}</p>
+        <div class="pe-row"><button type="button" class="btn ghost" data-act="add-source" data-v="${page.id}">${icon('plus')}Ajouter un site</button>
+        ${others.length ? `<a class="btn ghost" href="#sources">${icon('list')}Gérer dans Sources</a>` : ''}</div>
+      </section>` : '';
+    const custom = PAGE_COLORS.includes(color) ? '#ffffff' : color;
+    return `<header class="sheet-h">
+        <span class="pe-ico">${icon(ic)}</span>
+        <div class="pe-titles"><p class="kicker">${isNew ? '// nouvelle page' : '// personnaliser'}</p><h2 id="pe-title">${esc(label || 'Nouvelle page')}</h2></div>
+        <button type="button" class="sheet-x" data-act="close-editor" aria-label="Fermer">${icon('x')}</button>
+      </header>
+      <div class="sheet-body">
+        ${presets}
+        <label class="field"><span>Nom de la page</span>
+          <input name="label" maxlength="30" value="${esc(label)}" placeholder="ex. F1, Foot, Politique jeunes…" required></label>
+        <fieldset class="pe-icons"><legend>Icône</legend>${PAGE_ICONS.map((n) => `<label class="pe-icon" title="${n}"><input type="radio" name="icon" value="${n}"${n === ic ? ' checked' : ''} aria-label="Icône ${n}"><span>${icon(n)}</span></label>`).join('')}</fieldset>
+        <fieldset class="pe-colors"><legend>Couleur</legend>${PAGE_COLORS.map((c) => `<label class="pe-color" style="--sw:${c}"><input type="radio" name="color" value="${c}"${c === color ? ' checked' : ''} aria-label="Couleur ${c}"><span></span></label>`).join('')}
+          <label class="pe-color pe-custom" style="--sw:${custom}" title="Autre couleur"><input type="radio" name="color" value="${custom}" class="pe-custom-radio"${PAGE_COLORS.includes(color) ? '' : ' checked'} aria-label="Autre couleur"><span>${icon('plus')}</span><input type="color" class="pe-picker" value="${custom}" tabindex="-1" aria-hidden="true"></label></fieldset>
+        <section class="pe-sec">
+          <h3>${icon('search')}Mots-clés dans la presse <em>Google Actualités</em></h3>
+          <p class="pe-help">Les articles de presse qui parlent de ces mots, mis à jour en continu. Une virgule sépare deux recherches : « F1, Formule 1 ».${isNew && !theme ? ' Rempli avec le nom de la page, modifiable.' : ''}</p>
+          <div class="pe-row"><label class="field grow"><span class="sr-only">Mots-clés</span><input name="query" maxlength="300" value="${esc(query)}" placeholder="ex. jeunes politique, élections" data-auto="${isNew && !theme ? '1' : '0'}"></label>
+            <select name="qlang" class="ctl" aria-label="Langue de la presse"><option value="fr"${qlang === 'fr' ? ' selected' : ''}>Presse française</option><option value="en"${qlang === 'en' ? ' selected' : ''}>Presse anglophone</option></select></div>
+        </section>
+        ${recommended}${current}
+        ${isNew ? `<p class="pe-note">${icon('info')}<span>Ensuite, ajoutez n’importe quel site ou flux RSS depuis la page, avec « Ajouter une source ». Tout reste dans ce navigateur.</span></p>` : ''}
+      </div>
+      <footer class="sheet-f">
+        ${isNew ? '' : `<button type="button" class="btn danger" data-act="delete-page">${icon('trash')}Supprimer</button>`}
+        <span class="pe-err" role="alert"></span>
+        <button type="button" class="btn ghost" data-act="close-editor">Annuler</button>
+        <button type="submit" class="btn">${isNew ? `${icon('plus')}Créer la page` : `${icon('check')}Enregistrer`}</button>
+      </footer>`;
+  }
+
+  /** Aperçu en direct : l'en-tête et la couleur de la fenêtre suivent le nom, l'icône et la couleur choisis. */
+  function syncEditor() {
+    const form = $('#page-form');
+    if (!form) return;
+    const data = new FormData(form);
+    const color = isColor(data.get('color')) ? data.get('color') : PAGE_COLORS[0];
+    editor.style.setProperty('--c', color);
+    $('.pe-ico', editor).innerHTML = icon(PAGE_ICONS.includes(data.get('icon')) ? data.get('icon') : 'news');
+    $('#pe-title').textContent = String(data.get('label') || '').trim() || 'Nouvelle page';
+  }
+
+  function openEditor(pageId = null, themeId = '') {
+    const page = pageId ? pagesRaw.find((p) => p.id === pageId) : null;
+    if (!page && pagesRaw.length >= MAX_PAGES) {
+      toast('Limite atteinte', `${MAX_PAGES} pages perso au maximum : supprimez-en une pour en créer une autre.`);
+      return;
+    }
+    const theme = page ? null : THEMES.find((t) => t.id === themeId) || null;
+    editing = page?.id || null;
+    editor.innerHTML = `<form id="page-form" class="sheet-in" data-theme="${theme?.id || ''}" autocomplete="off" novalidate>${editorHTML(page, theme)}</form>`;
+    clearTimeout(editorTimer);
+    editor.classList.remove('closing');
+    if (!editor.open) {
+      editor.showModal();
+      document.documentElement.classList.add('modal-open');
+    }
+    syncEditor();
+    const name = $('#page-form').elements.label;
+    if (!themeId) name.focus();
+    if (page) name.select();
+  }
+
+  function closeEditor(instant = false) {
+    return new Promise((resolve) => {
+      if (!editor.open) { resolve(); return; }
+      clearTimeout(editorTimer);
+      const done = () => { editor.close(); resolve(); };
+      if (instant || reduceMotion.matches) { done(); return; }
+      editor.classList.add('closing');
+      editorTimer = setTimeout(done, 220);
+    });
+  }
+
+  editor.addEventListener('close', () => {
+    editor.classList.remove('closing');
+    document.documentElement.classList.remove('modal-open');
+    editing = null;
+  });
+  editor.addEventListener('cancel', (e) => { e.preventDefault(); closeEditor(); });
+  // Clic sur le voile (pas un glisser commencé dans la fenêtre, comme une sélection de texte).
+  editor.addEventListener('pointerdown', (e) => { downOnVeil = e.target === editor; });
+  editor.addEventListener('click', (e) => { if (e.target === editor && downOnVeil) closeEditor(); });
+  editor.addEventListener('input', (e) => {
+    const form = $('#page-form');
+    const query = form.elements.query;
+    if (e.target.name === 'label' && query.dataset.auto === '1') query.value = e.target.value; // les mots-clés suivent le nom tant qu'on n'y touche pas
+    if (e.target === query) query.dataset.auto = '0';
+    if (e.target.classList.contains('pe-picker')) {
+      const radio = $('.pe-custom-radio', editor);
+      radio.value = e.target.value;
+      radio.checked = true;
+      radio.parentElement.style.setProperty('--sw', e.target.value);
+    }
+    $('.pe-err', editor).textContent = '';
+    syncEditor();
+  });
+  editor.addEventListener('submit', (e) => {
+    e.preventDefault();
+    savePage(e.target);
+  });
+
+  function savePage(form) {
+    const data = new FormData(form);
+    const label = String(data.get('label') || '').replace(/\s+/g, ' ').trim().slice(0, 30);
+    if (!label) {
+      $('.pe-err', editor).textContent = 'Donnez un nom à la page.';
+      form.elements.label.focus();
+      return;
+    }
+    const ic = PAGE_ICONS.includes(data.get('icon')) ? data.get('icon') : 'news';
+    const color = isColor(data.get('color')) ? String(data.get('color')).toLowerCase() : PAGE_COLORS[0];
+    const query = splitQuery(data.get('query')).join(', ');
+    const qlang = data.get('qlang') === 'en' ? 'en' : 'fr';
+    const created = !editing;
+    let page = pagesRaw.find((p) => p.id === editing);
+    if (page) {
+      Object.assign(page, { label, icon: ic, color });
+      Object.assign(CAT[page.id], { label, long: label, icon: ic, color });
+    } else {
+      const base = slugify(label);
+      let id = base;
+      for (let k = 2; RESERVED.has(id) || CAT[id]; k++) id = `${base.slice(0, 20)}-${k}`;
+      page = { id, label, icon: ic, color, createdAt: Date.now() };
+      pagesRaw.push(page);
+      registerPage(page);
+      const theme = THEMES.find((t) => t.id === form.dataset.theme);
+      for (const i of data.getAll('src').map(Number)) {
+        const s = theme?.sources[i];
+        if (!s) continue;
+        addSource({
+          id: uid(), cat: id, kind: 'rss', name: s.name, site: s.site, url: s.url, lang: s.lang === 'en' ? 'en' : 'fr',
+          type: s.type || 'presse', keywords: s.keywords || '', addedAt: Date.now(),
+        });
+      }
+    }
+    // Mots-clés : la source Google Actualités de la page est créée, remplacée ou retirée.
+    const news = SOURCES.find((s) => s.cat === page.id && s.kind === 'news');
+    if (!news || news.query !== query || news.lang !== qlang) {
+      if (news) removeSource(news.id);
+      if (query) addSource(newsSourceRaw(page.id, query, qlang));
+    }
+    savePages();
+    saveCustom();
+    pruneSeen();
+    persist();
+    buildMenu();
+    const n = SOURCES.filter((s) => s.cat === page.id).length;
+    closeEditor().then(() => {
+      if (state.tab === page.id) go(false);
+      else location.hash = page.id;
+    });
+    toast(created ? 'Page créée' : 'Page enregistrée', created
+      ? `« ${label} » est dans le menu${n ? ` avec ${n} source${n > 1 ? 's' : ''} : chargement des articles…` : ' : ajoutez-lui des sources.'}`
+      : `« ${label} » est à jour.`);
+    refresh();
+  }
+
+  function deletePage(id) {
+    const cat = CAT[id];
+    if (!cat?.custom) return;
+    const srcs = SOURCES.filter((s) => s.cat === id);
+    if (!confirm(`Supprimer la page « ${cat.label} »${srcs.length ? ` et ses ${srcs.length} source(s)` : ''} ?\nVos favoris sont conservés.`)) return;
+    srcs.forEach((s) => removeSource(s.id));
+    pagesRaw = pagesRaw.filter((p) => p.id !== id);
+    unregisterPage(id);
+    delete state.lastVisit[id];
+    if (state.addCat === id) state.addCat = 'info';
+    savePages();
+    saveCustom();
+    pruneSeen();
+    persist();
+    buildMenu();
+    closeEditor(true);
+    toast('Page supprimée', `« ${cat.label} » a été retirée du menu.`);
+    if (state.tab === id) location.hash = 'radar';
+    else go(false);
+  }
 
   // ───────── Transitions ─────────
 
@@ -1502,7 +1865,7 @@
   function updateChrome() {
     let total = 0;
     const count = (n) => (n > 99 ? '99+' : String(n));
-    for (const el of document.querySelectorAll('.nav-item')) {
+    for (const el of document.querySelectorAll('.nav-item[data-tab]')) {
       const id = el.dataset.tab;
       const selected = id === state.tab;
       if (selected) el.setAttribute('aria-current', 'page');
@@ -1647,6 +2010,7 @@
 
   window.addEventListener('hashchange', () => {
     closeMenu(true); // touche 1–9 menu ouvert, bouton Précédent…
+    closeEditor(true);
     const before = state.tab;
     const beforeSub = state.sub;
     parseHash();
@@ -1671,6 +2035,11 @@
     };
     switch (act) {
       case 'menu-close': closeMenu(); return;
+      case 'new-page': closeMenu().then(() => openEditor()); return;
+      case 'edit-page': openEditor(state.tab); return;
+      case 'pick-preset': openEditor(null, v); return;
+      case 'close-editor': closeEditor(); return;
+      case 'delete-page': deletePage(editing); return;
       case 'sub':
         markSeg(); // le repère glisse, puis la page change
         setTimeout(() => { location.hash = SUBS[v] ? `${state.tab}/${SUBS[v]}` : state.tab; }, reduceMotion.matches ? 0 : 170);
@@ -1702,6 +2071,7 @@
         $('#import-file').click();
         return;
       case 'add-source':
+        closeEditor(true);
         state.addOpen = true;
         state.addCat = v;
         if (state.tab === 'sources') { renderHead(); focusAddForm(); } else location.hash = 'sources';
@@ -1804,7 +2174,7 @@
   }, true);
 
   document.addEventListener('keydown', (e) => {
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.ctrlKey || e.metaKey || e.altKey || editor.open) return; // pas de raccourcis pendant l'édition d'une page
     const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement?.tagName);
     if (typing) {
       if (e.key === 'Escape') document.activeElement.blur();

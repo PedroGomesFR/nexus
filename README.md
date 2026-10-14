@@ -7,7 +7,8 @@
 **La veille tech en temps réel — sans compte, gratuite et open source.**
 
 IA · apps et jeux rétro-ingéniérés · informatique · cybersécurité<br>
-42 sources fiables, rafraîchies toutes les minutes, au même endroit.
+42 sources fiables, rafraîchies toutes les minutes, au même endroit.<br>
+Et vos propres pages sur n'importe quel sujet : F1, foot, politique…
 
 <br>
 
@@ -47,6 +48,7 @@ NEXUS rassemble tout sur une seule page :
 | 🔎 **Filtres** | Recherche, langue (FR / EN), période, type de source, vue cartes ou liste |
 | 🎮 **Projets GitHub** | Catalogue des décompilations de jeux et des apps / API rétro-ingéniérées, triés par étoiles ou par activité |
 | 🕹️ **Jouer** | 25 jeux rétro-ingéniérés : liens officiels pour jouer en ligne ou télécharger, ce qu'il faut fournir et comment les lancer |
+| 🗂️ **Pages perso** | Une page sur le sujet de votre choix, avec son icône et sa couleur : 13 modèles prêts à l'emploi (politique, F1, foot, voiture…) avec des médias vérifiés, des mots-clés suivis dans la presse via Google Actualités, et vos propres sites |
 | 🔖 **Favoris** | Conservés même quand l'article disparaît des flux |
 | ➕ **Sources perso** | Ajoutez un site (son flux RSS est trouvé automatiquement), un flux RSS/Atom ou une recherche Hacker News |
 | 🧹 **Catalogue à la carte** | Retirez les sources qui ne vous intéressent pas, rétablissez-les en un clic |
@@ -61,6 +63,9 @@ NEXUS rassemble tout sur une seule page :
   </tr>
   <tr>
     <td colspan="2"><img src="docs/jouer.jpg" alt="Jeux rétro-ingéniérés jouables, avec liens officiels et instructions"><br><sub><b>Reverse Jeux → Jouer</b> : Diablo, Zelda, Tomb Raider, OpenTTD… jouables en ligne ou à télécharger, avec la marche à suivre. Aucun jeu n'est hébergé : liens officiels uniquement.</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/pages-perso.jpg" alt="Création d'une page perso à partir du modèle Politique jeunes"><br><sub><b>Menu → Créer une page</b> : partez d'un modèle ou d'une page vide, choisissez l'icône et la couleur, suivez des mots-clés dans la presse et cochez les médias recommandés.</sub></td>
   </tr>
 </table>
 
@@ -115,6 +120,13 @@ Certains sites, comme Reddit, bloquent les serveurs d'hébergement : ces sources
 ## Personnaliser
 
 **Dans l'interface, pour vous seul.** La page **Sources** permet de retirer une source du catalogue ou d'ajouter la vôtre.
+**Menu → Créer une page** ajoute une page sur le sujet de votre choix. Elle peut combiner trois choses :
+
+- **un modèle** : politique, politique jeunes, voiture, F1, foot, rugby, tennis, basket, économie, sciences, espace, cinéma et séries, jeux vidéo ;
+- **des mots-clés** suivis dans la presse via Google Actualités, la virgule séparant deux recherches (« F1, Formule 1 ») ;
+- **vos propres sites ou flux RSS**, ajoutés depuis la page avec « Ajouter une source ».
+
+Le bouton **Personnaliser** de la page change ensuite son nom, son icône, sa couleur et ses mots-clés, ou la supprime.
 Ces choix sont enregistrés dans votre navigateur. Pour les transférer, utilisez **Exporter** puis **Importer**.
 
 **Dans le code, pour tout le monde.** Le catalogue se trouve dans [`js/sources.js`](js/sources.js). Une source s'écrit en une ligne :
@@ -150,6 +162,8 @@ nexus/
 ├── index.html      la page
 ├── css/style.css   thème néon, mise en page, animations
 ├── js/sources.js   catalogue des rubriques et des sources
+├── js/themes.js    modèles de pages perso (politique, F1, foot…)
+├── js/games.js     jeux rétro-ingéniérés de la vue « Jouer »
 ├── js/app.js       l'application (JavaScript pur, sans framework)
 ├── serveur.py      le relais (bibliothèque standard Python)
 ├── lancer.bat      démarrage en un double-clic sous Windows
@@ -159,7 +173,8 @@ nexus/
 
 ## Vie privée et sécurité
 
-- **Aucune donnée collectée.** Pas de compte, pas de cookie de suivi, pas de statistiques. Favoris et réglages restent dans le `localStorage` de votre navigateur.
+- **Aucune donnée collectée.** Pas de compte, pas de cookie de suivi, pas de statistiques. Favoris, pages perso et réglages restent dans le `localStorage` de votre navigateur.
+- **Mots-clés des pages perso.** Ils sont transmis à Google Actualités par le relais, comme une recherche ordinaire, sans rien qui vous identifie.
 - **Contenus tiers chargés.** Ce sont seulement les images des articles (depuis leurs sites), les polices Google Fonts et, si vous cliquez sur « Traduire », Google Traduction.
 - **Un relais limité.** Il refuse les adresses du réseau local. Pour les sources perso, il ne relaie que de vrais flux RSS/Atom, avec une limite de débit une fois en ligne : il ne peut pas servir de proxy web ouvert.
 - **Peu de fichiers servis.** Seuls le site et son code source sont publics. `.git` et la configuration ne le sont pas.

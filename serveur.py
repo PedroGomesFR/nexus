@@ -30,7 +30,7 @@ from urllib.parse import parse_qs, urljoin, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 ROOT = Path(__file__).resolve().parent
-SOURCES_FILE = ROOT / "js" / "sources.js"
+CATALOG_FILES = (ROOT / "js" / "sources.js", ROOT / "js" / "themes.js")  # sources et modeles de pages
 HOSTED = "PORT" in os.environ
 HOST = os.environ.get("HOST", "0.0.0.0" if HOSTED else "127.0.0.1")
 DEFAULT_PORT = int(os.environ.get("PORT", 8787))
@@ -42,8 +42,9 @@ USER_AGENT = (
 TIMEOUT = 20
 MAX_BYTES = 10 * 1024 * 1024
 FRESH_FOR = 20  # secondes : en dessous, on ressert la copie en cache sans recontacter la source
-# Sources a quota serre (GitHub : 10 recherches/min sans jeton) : cache partage plus long entre visiteurs.
-FRESH_FOR_HOST = {"api.github.com": 600, "www.reddit.com": 600}
+# Sources a quota serre (GitHub : 10 recherches/min sans jeton) et recherches Google Actualites
+# des pages perso : cache partage plus long entre visiteurs.
+FRESH_FOR_HOST = {"api.github.com": 600, "www.reddit.com": 600, "news.google.com": 300}
 CACHE_MAX = 400  # nombre d'URL gardees en memoire
 RATE_LIMIT = 60  # en ligne : requetes par minute et par visiteur vers des sources perso
 FEED_TYPES = ("application/rss+xml", "application/atom+xml", "application/rdf+xml")
@@ -63,13 +64,13 @@ class RelayError(Exception):
 
 
 def allowed_hosts():
-    """Domaines cites dans js/sources.js (relu quand le fichier change)."""
+    """Domaines cites dans js/sources.js et js/themes.js (relus quand un fichier change)."""
     try:
-        mtime = SOURCES_FILE.stat().st_mtime
+        mtime = tuple(f.stat().st_mtime for f in CATALOG_FILES if f.exists())
     except OSError:
         return frozenset()
     if mtime != _allowed["mtime"]:
-        text = SOURCES_FILE.read_text(encoding="utf-8")
+        text = "\n".join(f.read_text(encoding="utf-8") for f in CATALOG_FILES if f.exists())
         hosts = frozenset(h.lower() for h in re.findall(r"https?://([a-z0-9.-]+)", text, re.IGNORECASE))
         _allowed.update(mtime=mtime, hosts=hosts)
     return _allowed["hosts"]
