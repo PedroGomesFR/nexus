@@ -12,6 +12,7 @@ GITHUB_TOKEN : facultatif, releve la limite de l'API GitHub (jeton sans permissi
 """
 
 import gzip
+import hashlib
 import ipaddress
 import json
 import os
@@ -54,6 +55,7 @@ FRESH_FOR_HOST = {
 CACHE_MAX = 400  # nombre d'URL gardees en memoire
 RATE_LIMIT = 60  # en ligne : requetes par minute et par visiteur vers des sources perso
 FEED_TYPES = ("application/rss+xml", "application/atom+xml", "application/rdf+xml")
+COMPRESSIBLE = re.compile(r"text/|json|xml|javascript|svg", re.IGNORECASE)  # reponses compressees en ligne
 COMMON_FEED_PATHS = ("/feed", "/rss", "/feed.xml", "/rss.xml", "/atom.xml", "/index.xml")
 FEED_MARK = re.compile(rb"<(?:rss|feed|rdf:RDF)[\s>]", re.IGNORECASE)
 
@@ -108,6 +110,59 @@ _opener = build_opener(SafeRedirect)
 def looks_like_feed(body):
     head = body[:5000].lstrip(b"\xef\xbb\xbf \t\r\n")
     return head.startswith(b"<") and FEED_MARK.search(head) is not None
+
+
+SLIM_ABOVE = 400 * 1024  # au-dela, le texte integral des articles est retire du flux
+CONTENT_RE = re.compile(rb"<(content:encoded|content)\b[^>]*>(.*?)</\1>", re.IGNORECASE | re.DOTALL)
+SUMMARY_RE = re.compile(rb"<(description|summary)\b([^>]*)>(.*?)</\1>", re.IGNORECASE | re.DOTALL)
+RAW_IMG_RE = re.compile(rb"""<img\b[^>]*?\ssrc=["']([^"']+)["']""", re.IGNORECASE)
+XML_ENTITIES = ((b"&lt;", b"<"), (b"&gt;", b">"), (b"&quot;", b'"'), (b"&#34;", b'"'), (b"&#39;", b"'"), (b"&#039;", b"'"), (b"&apos;", b"'"), (b"&amp;", b"&"))
+
+
+def xml_text(inner):
+    """Texte d'un element XML (CDATA ou HTML echappe) : le HTML qu'il contient."""
+    inner = inner.strip()
+    if inner.startswith(b"<![CDATA[") and inner.endswith(b"]]>"):
+        return inner[9:-3]
+    for entity, char in XML_ENTITIES:
+        inner = inner.replace(entity, char)
+    return inner
+
+
+def xml_escape(raw):
+    return raw.replace(b"&", b"&amp;").replace(b"<", b"&lt;").replace(b">", b"&gt;")
+
+
+def first_image(html):
+    found = RAW_IMG_RE.search(html)
+    url = found.group(1) if found else b""
+    return url if url.lower().startswith((b"http://", b"https://", b"//")) else b""  # pas d'images data: (lourdes)
+
+
+def slim_feed(body):
+    """Flux tres lourd (ex. Project Zero : 11 Mo pour 10 articles, texte integral et images en ligne).
+    Le site n'affiche que le titre, un extrait et une image : le contenu complet est remplace par sa
+    premiere image, et une description demesuree par un extrait de 800 caracteres."""
+    utf8 = re.match(rb"""\s*(?:<\?xml[^>]*encoding=["'](utf-?8)["']|<\?xml(?![^>]*encoding)|<(?!\?))""", body, re.IGNORECASE)
+
+    def keep_image(match):
+        url = first_image(xml_text(match.group(2)))
+        inner = xml_escape(b'<img src="' + url + b'">') if url else b""
+        return b"<" + match.group(1) + b">" + inner + b"</" + match.group(1) + b">"
+
+    def excerpt(match):
+        if len(match.group(3)) < 4096 or not utf8:  # extrait ordinaire, ou encodage non UTF-8 : intact
+            return match.group(0)
+        html = xml_text(match.group(3))
+        url = first_image(html)
+        text = re.sub(rb"<(script|style)\b.*?</\1>", b" ", html, flags=re.IGNORECASE | re.DOTALL)
+        text = re.sub(rb"\s+", b" ", re.sub(rb"<[^>]+>", b" ", text)).strip()
+        if len(text) > 800:
+            text = text[:800].rsplit(b" ", 1)[0].decode("utf-8", "ignore").encode("utf-8") + " …".encode("utf-8")
+        inner = xml_escape((b'<img src="' + url + b'"> ' if url else b"") + text)
+        return b"<" + match.group(1) + match.group(2) + b">" + inner + b"</" + match.group(1) + b">"
+
+    return SUMMARY_RE.sub(excerpt, CONTENT_RE.sub(keep_image, body))
 
 
 def over_limit(client):
@@ -179,8 +234,11 @@ def fetch(url, client="local"):
             if not raw.strip():
                 # Typiquement un 202 vide : la source impose une verification anti-robot.
                 raise RelayError(502, f"Reponse vide (HTTP {resp.status}) : protection anti-robot de la source, nouvel essai plus tard")
+            body = decode_body(raw, resp.headers.get("Content-Encoding"))
+            if len(body) > SLIM_ABOVE and looks_like_feed(body):
+                body = slim_feed(body)
             entry = {
-                "body": decode_body(raw, resp.headers.get("Content-Encoding")),
+                "body": body,
                 "type": resp.headers.get("Content-Type") or "application/octet-stream",
                 "etag": resp.headers.get("ETag"),
                 "modified": resp.headers.get("Last-Modified"),
@@ -315,9 +373,37 @@ class Handler(SimpleHTTPRequestHandler):
         elif route.path == "/api/discover":
             self.discover(parse_qs(route.query).get("url", [""])[0])
         elif route.path in ("/", "/index.html", *self.PUBLIC_FILES) or route.path.startswith(("/css/", "/js/")):
-            super().do_GET()  # seul le site est servi, pas le reste du dossier (.git, render.yaml...)
+            self.static(route.path)  # seul le site est servi, pas le reste du dossier (.git, render.yaml...)
         else:
             self.send_error(404, "Not found")
+
+    _files = {}  # fichier -> (etag, contenu, {"gz": contenu compresse})
+
+    def static(self, path):
+        """Fichier du site, avec ETag (304 si le navigateur l'a deja) et compression en ligne."""
+        file = Path(self.translate_path(path))  # translate_path ignore les « .. »
+        if file.is_dir():
+            file = file / "index.html"
+        try:
+            stat = file.stat()
+        except OSError:
+            self.send_error(404, "Not found")
+            return
+        etag = f'"{stat.st_mtime_ns:x}-{stat.st_size:x}"'
+        if self.headers.get("If-None-Match") == etag:
+            self.not_modified(etag)
+            return
+        cached = self._files.get(file)
+        if not cached or cached[0] != etag:
+            cached = self._files[file] = (etag, file.read_bytes(), {})
+        self.reply(200, cached[1], self.guess_type(str(file)), {"ETag": etag}, cached[2])
+
+    def not_modified(self, etag, extra=None):
+        self.send_response(304)
+        self.send_header("ETag", etag)
+        for key, value in (extra or {}).items():
+            self.send_header(key, value)
+        self.end_headers()
 
     def client_id(self):
         if HOSTED:  # derriere le proxy de l'hebergeur, l'adresse du visiteur est dans X-Forwarded-For
@@ -338,7 +424,15 @@ class Handler(SimpleHTTPRequestHandler):
         except Exception as err:  # RelayError, flux corrompu, decompression impossible...
             self.fail(url, err)
             return
-        self.reply(200, entry["body"], entry["type"], {"X-Nexus-Cache": state})
+        # Empreinte du contenu : si le navigateur a deja cette version, « 304 inchange » sans corps.
+        # La plupart des flux ne changent pas d'une minute a l'autre : rien a telecharger ni a reanalyser.
+        tag = entry.get("tag")
+        if not tag:
+            tag = entry["tag"] = '"%s"' % hashlib.sha1(entry["body"]).hexdigest()[:24]
+        if self.headers.get("If-None-Match") == tag:
+            self.not_modified(tag, {"X-Nexus-Cache": state})
+            return
+        self.reply(200, entry["body"], entry["type"], {"ETag": tag, "X-Nexus-Cache": state}, entry)
 
     def discover(self, url):
         if over_limit(self.client_id()):
@@ -351,11 +445,23 @@ class Handler(SimpleHTTPRequestHandler):
             return
         self.reply(200, json.dumps({"feeds": feeds}).encode("utf-8"), "application/json")
 
-    def reply(self, status, body, ctype, extra=None):
+    def reply(self, status, body, ctype, extra=None, store=None):
+        """Envoie une reponse. En ligne, le texte est compresse (gzip) ; store garde la version
+        compressee pour les requetes suivantes (fichier du site ou flux en cache)."""
+        headers = dict(extra or {})
+        if HOSTED and len(body) > 1024 and COMPRESSIBLE.search(ctype) and "gzip" in self.headers.get("Accept-Encoding", ""):
+            packed = store.get("gz") if store is not None else None
+            if packed is None:
+                packed = gzip.compress(body, compresslevel=6)
+                if store is not None:
+                    store["gz"] = packed
+            body = packed
+            headers["Content-Encoding"] = "gzip"
+            headers["Vary"] = "Accept-Encoding"
         self.send_response(status)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
-        for key, value in (extra or {}).items():
+        for key, value in headers.items():
             self.send_header(key, value)
         self.end_headers()
         self.wfile.write(body)

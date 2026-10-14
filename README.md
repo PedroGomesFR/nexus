@@ -160,7 +160,10 @@ flowchart LR
 
 1. **Le navigateur** demande chaque flux au relais. Il le fait toutes les minutes, ou moins souvent pour les sources à quota (GitHub, Reddit).
 2. **Le relais** télécharge le flux et le garde en cache de 20 secondes à 10 minutes. Il utilise des requêtes conditionnelles (ETag) pour ménager les sites.
+   Il allège aussi les flux démesurés : certains contiennent le texte intégral de chaque article, jusqu'à 11 Mo. Il n'en garde que l'extrait et la première image.
 3. **Le navigateur** analyse les flux, trie, filtre et affiche les articles. Rien n'est envoyé ailleurs.
+   Quand un flux n'a pas changé depuis la minute précédente, le relais répond « inchangé » (304) : rien n'est retéléchargé ni réanalysé.
+   En ligne, les réponses sont en plus compressées (gzip).
 
 ```
 nexus/

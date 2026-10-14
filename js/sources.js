@@ -71,7 +71,7 @@ window.NEXUS = (() => {
     { id: 'willison', cat: 'ia', name: 'Simon Willison', site: 'https://simonwillison.net/', url: 'https://simonwillison.net/atom/everything/', type: 'expert', lang: 'en' },
 
     // ───────── Reverse Apps ─────────
-    { id: 'p0', cat: 'apps', name: 'Google Project Zero', site: 'https://googleprojectzero.blogspot.com/', url: 'https://googleprojectzero.blogspot.com/feeds/posts/default', type: 'recherche', lang: 'en' },
+    { id: 'p0', cat: 'apps', name: 'Google Project Zero', site: 'https://projectzero.google/', url: 'https://projectzero.google/feed.xml', type: 'recherche', lang: 'en' },
     { id: 'checkpoint', cat: 'apps', name: 'Check Point Research', site: 'https://research.checkpoint.com/', url: 'https://research.checkpoint.com/feed/', type: 'recherche', lang: 'en' },
     { id: 'trailofbits', cat: 'apps', name: 'Trail of Bits', site: 'https://blog.trailofbits.com/', url: 'https://blog.trailofbits.com/feed/', type: 'recherche', lang: 'en' },
     { id: 'objective-see', cat: 'apps', name: 'Objective-See', site: 'https://objective-see.org/blog.html', url: 'https://objective-see.org/rss.xml', type: 'recherche', lang: 'en' },

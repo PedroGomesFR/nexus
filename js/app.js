@@ -456,7 +456,7 @@
   const saveDisabled = () => writeJSON(DISABLED_KEY, [...state.disabled]) || storageWarning();
 
   // ───────── Récupération des flux ─────────
-  const inflight = new Map(); // une même URL partagée par plusieurs sources n'est téléchargée qu'une fois par cycle
+  const inflight = new Map(); // lectures en cours pendant un cycle de rafraîchissement
 
   function httpMessage(status, url, body) {
     if (status === 403 && url.includes('api.github.com')) return 'Limite de l’API GitHub atteinte, nouvel essai automatique plus tard';
@@ -474,17 +474,19 @@
     try { return new TextDecoder(charset || 'utf-8').decode(buf); } catch { return new TextDecoder().decode(buf); }
   }
 
-  /** Télécharge une URL (via le relais s'il est là). shared = mutualisé avec le cycle de rafraîchissement en cours. */
-  function getText(url, shared = true) {
-    if (shared && inflight.has(url)) return inflight.get(url);
+  /** Requête via le relais s'il est là. tag : empreinte de la version déjà lue → le relais
+   *  répond « 304 inchangé » sans rien renvoyer ({ text: null }). */
+  function request(url, tag = '') {
     const target = state.relay ? `/api/proxy?url=${encodeURIComponent(url)}` : url;
-    const job = fetch(target, { cache: 'no-store', signal: AbortSignal.timeout(25000) })
+    const headers = tag && state.relay ? { 'If-None-Match': tag } : undefined;
+    return fetch(target, { cache: 'no-store', headers, signal: AbortSignal.timeout(25000) })
       .then(async (res) => {
+        if (res.status === 304) return { text: null, tag };
         if (!res.ok) {
           const body = state.relay ? (await res.text().catch(() => '')).trim() : '';
           throw new Error(httpMessage(res.status, url, body));
         }
-        return readText(res);
+        return { text: await readText(res), tag: state.relay ? res.headers.get('ETag') || '' : '' };
       })
       .catch((err) => {
         if (err.name === 'TimeoutError' || err.name === 'AbortError') throw new Error('Pas de réponse en 25 s');
@@ -495,7 +497,26 @@
         }
         throw err;
       });
-    if (shared) inflight.set(url, job);
+  }
+
+  /** Télécharge une URL et renvoie son texte (ajout de source, classement des IA…). */
+  const getText = (url) => request(url).then((r) => r.text);
+
+  /** Articles d'un flux. Une URL partagée par plusieurs sources n'est lue qu'une fois par cycle, et un flux
+   *  inchangé depuis la dernière lecture (304 du relais) n'est ni retéléchargé ni réanalysé. */
+  const parsedFeeds = new Map(); // « type|url » → { tag, items } : dernière analyse de chaque flux
+  function getItems(url, kind) {
+    const key = `${kind}|${url}`;
+    if (inflight.has(key)) return inflight.get(key);
+    const known = parsedFeeds.get(key);
+    const job = request(url, known?.tag).then(({ text, tag }) => {
+      if (text === null && known) return known.items;
+      const items = PARSERS[kind](text, url);
+      if (tag) parsedFeeds.set(key, { tag, items });
+      else parsedFeeds.delete(key);
+      return items;
+    });
+    inflight.set(key, job);
     return job;
   }
 
@@ -654,8 +675,7 @@
   async function fetchSource(src) {
     const t0 = performance.now();
     const urls = [].concat(src.url);
-    const parse = PARSERS[src.kind || 'rss'];
-    const settled = await Promise.allSettled(urls.map((u) => getText(u).then((text) => parse(text, u))));
+    const settled = await Promise.allSettled(urls.map((u) => getItems(u, src.kind || 'rss')));
     const done = settled.filter((s) => s.status === 'fulfilled');
     if (!done.length) throw settled[0].reason;
 
@@ -663,8 +683,9 @@
     const prevDates = new Map((state.results[src.id]?.items || []).map((p) => [p.id, p.date]));
     const seen = new Set();
     const items = [];
-    for (const it of done.flatMap((s) => s.value)) {
-      if (!it.link || !it.title) continue;
+    for (const raw of done.flatMap((s) => s.value)) {
+      if (!raw.link || !raw.title) continue;
+      const it = { ...raw }; // copie : l'analyse du flux est réutilisée telle quelle au prochain cycle
       const hay = `${it.title} ${it.summary} ${(it.topics || []).join(' ')}`;
       if (src.include && !src.include.test(hay)) continue;
       if (src.exclude && src.exclude.test(hay)) continue;
@@ -993,7 +1014,7 @@
           ? `Cette source est déjà dans votre liste (${existing.name}).`
           : `${existing.name} fait partie du catalogue mais vous l’avez retirée : cliquez sur « Rétablir » plus bas.`);
       }
-      const text = await getText(url, false);
+      const text = await getText(url);
       const items = (kind === 'hn' ? parseHN(text) : parseFeed(text, url)).filter((it) => it.title && it.link);
       const re = keywordsRe(data.keywords);
       const kept = re ? items.filter((it) => re.test(`${it.title} ${it.summary}`)) : items;
@@ -1086,6 +1107,7 @@
 
   // ───────── Rendu ─────────
   const phHTML = (src) => `<div class="ph" style="--h:${hue(src.name)}"><span>${esc(mono(src))}</span><em>${esc(src.name)}</em></div>`;
+  const badImages = new Set(); // images en erreur (ou pixels de suivi) : remplacées par l'image générée
   const typeBadge = (type) => `<span class="type type-${type}" title="${esc(TYPES[type].hint)}">${esc(TYPES[type].label)}</span>`;
   const extLink = (href, inner, title = '') => `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer"${title ? ` title="${esc(title)}"` : ''}>${inner}</a>`;
   const favBtn = (it) => {
@@ -1111,7 +1133,7 @@
     const name = it.via || src.name; // article trouvé par Google Actualités : on affiche le vrai média
     return `<article class="card${fresh ? ' is-new' : ''}" data-src="${esc(src.id)}" data-key="${esc(it.id)}" style="--h:${hue(name)};--c:${cat.color};--i:${Math.min(i, 18)}">
       ${fresh ? '<span class="new-pill">NOUVEAU</span>' : ''}
-      <div class="media">${it.image ? `<img src="${esc(it.image)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : phHTML(it.via ? { name } : src)}</div>
+      <div class="media">${it.image && !badImages.has(it.image) ? `<img src="${esc(it.image)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : phHTML(it.via ? { name } : src)}</div>
       <div class="body">
         <div class="meta"><span class="src"${it.via ? ` title="Trouvé via ${esc(src.name)}"` : ''}>${esc(name)}</span>${typeBadge(src.type)}${timeTag(it.date)}</div>
         <h3>${extLink(it.link, esc(it.title))}</h3>
@@ -1133,7 +1155,7 @@
     return `<article class="card repo" data-src="${esc(src.id)}" data-key="${esc(it.id)}" style="--h:${hue(name)};--c:${cat.color};--i:${Math.min(i, 18)}">
       <div class="body">
         <div class="r-head">
-          <img class="av" src="${esc(it.image)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">
+          <img class="av" src="${esc(it.image)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer"${badImages.has(it.image) ? ' style="visibility:hidden"' : ''}>
           <div><div class="r-owner">${esc(owner)}</div><h3>${extLink(it.link, esc(name))}</h3></div>
           ${tag}
         </div>
@@ -1275,7 +1297,7 @@
     state.board.loading = true;
     boardJob = (async () => {
       try {
-        const rows = buildBoard(JSON.parse(await getText(BOARD.models, false)));
+        const rows = buildBoard(JSON.parse(await getText(BOARD.models)));
         state.board = { at: Date.now(), rows, error: '', loading: false };
         writeJSON(BOARD_KEY, { at: state.board.at, rows });
       } catch (err) {
@@ -1299,7 +1321,7 @@
     if (!todo.length) return;
     sizesJob = pool(todo, CONCURRENCY, async (hf) => {
       try {
-        const data = JSON.parse(await getText(`${BOARD.sizes}${hf}?expand%5B%5D=safetensors`, false));
+        const data = JSON.parse(await getText(`${BOARD.sizes}${hf}?expand%5B%5D=safetensors`));
         sizes[hf] = Number(data?.safetensors?.total) || 0; // 0 : taille non publiée (on se rabat sur le nom)
       } catch { /* dépôt privé ou retiré : nouvel essai au prochain chargement */ }
     }).then(() => {
@@ -1356,7 +1378,7 @@
       r.free ? '<span class="b-tag free" title="Une version gratuite existe sur OpenRouter (avec des limites d’usage)">Gratuit</span>' : '',
       r.mods.length ? `<span class="b-mods" title="Accepte aussi en entrée : ${r.mods.map((m) => MOD_ICONS[m][1].toLowerCase()).join(', ')}">${r.mods.map((m) => icon(MOD_ICONS[m][0])).join('')}</span>` : '',
     ].join('');
-    return `<tr class="b-row${i < 3 ? ` m${i + 1}` : ''}" style="--h:${hue(r.creator)}">
+    return `<tr class="b-row${i < 3 ? ` m${i + 1}` : ''}" data-key="m:${esc(r.id)}" style="--h:${hue(r.creator)}">
       <td class="b-rank"><span>${i + 1}</span></td>
       <td class="b-model${key === 'name' ? ' on' : ''}"><a class="b-name" href="${esc(r.url)}" target="_blank" rel="noopener noreferrer" title="${esc(r.desc || r.name)}">${esc(r.name)}</a>
         <div class="b-sub"><span class="b-creator">${esc(r.creator)}</span>${tags}</div></td>
@@ -1401,7 +1423,7 @@
       <button type="button" data-act="bsort" data-v="${k}" title="Trier par ${esc(BOARD_SORTS[k].label.toLowerCase())}">${label}${k === key ? `<i>${state.boardDir === 'asc' ? '↑' : '↓'}</i>` : ''}</button></th>`;
     const table = list.length ? `<div class="board-wrap"><table class="board">
         <thead><tr><th class="b-rank">#</th>${th('name', 'Modèle', 'model')}${th('intel', 'Intelligence')}${th('code', 'Code')}${th('agent', 'Agents')}${th('pin', 'Entrée $/M')}${th('pout', 'Sortie $/M')}${th('value', 'Intel. / $')}${th('ctx', 'Contexte')}${th('params', 'Taille')}${th('created', 'Date')}</tr></thead>
-        <tbody>${list.map((r, i) => boardRowHTML(r, i, max)).join('')}</tbody></table></div>`
+        <tbody>${list.slice(0, limit).map((r, i) => boardRowHTML(r, i, max)).join('')}</tbody></table>${moreHTML(list.length - limit)}</div>`
       : `<div class="empty">${icon('filter')}<b>Aucun modèle</b><p>Aucun modèle ne correspond à ces filtres.</p></div>`;
     const open = rows.filter((r) => r.hf).length;
     return `${note}<div class="b-his">${highlights}</div>
@@ -1704,6 +1726,65 @@
     syncPills($('#head'));
   }
 
+  // ───────── Mise à jour ciblée du DOM ─────────
+  // Au rafraîchissement, une recherche ou un filtre, on ne remplace pas toute la page : les nœuds existants
+  // sont gardés et seuls les changements sont appliqués. Les images ne se rechargent pas, le survol, le focus
+  // et la position de défilement sont conservés, et un clic en cours n'est pas perdu.
+  // Les éléments sont appariés par data-key (cartes, lignes) ou id, sinon par position et type.
+  const morphTpl = document.createElement('template');
+  const keyOf = (n) => (n.nodeType === 1 ? n.getAttribute('data-key') || n.id || null : null);
+
+  function morph(root, html) {
+    morphTpl.innerHTML = html;
+    morphChildren(root, morphTpl.content);
+  }
+
+  function morphNode(from, to) {
+    if (from.nodeType !== 1) {
+      if (from.nodeValue !== to.nodeValue) from.nodeValue = to.nodeValue;
+      return;
+    }
+    for (const { name } of [...from.attributes]) {
+      if (!to.hasAttribute(name) && !(name === 'open' && from.nodeName === 'DETAILS')) from.removeAttribute(name); // « Comment le lancer » reste ouvert
+    }
+    for (const { name, value } of to.attributes) if (from.getAttribute(name) !== value) from.setAttribute(name, value);
+    morphChildren(from, to);
+  }
+
+  function morphChildren(parent, next) {
+    const keyed = new Map();
+    for (let n = parent.firstChild; n; n = n.nextSibling) {
+      const k = keyOf(n);
+      if (k) keyed.set(k, n);
+    }
+    let cur = parent.firstChild; // prochain ancien nœud pas encore utilisé
+    for (let nn = next.firstChild; nn;) {
+      const after = nn.nextSibling;
+      const k = keyOf(nn);
+      let match = null;
+      if (k) {
+        match = keyed.get(k) || null;
+        if (match && match.nodeName !== nn.nodeName) match = null;
+        if (match) keyed.delete(k);
+      } else if (cur && !keyOf(cur) && cur.nodeType === nn.nodeType && cur.nodeName === nn.nodeName) {
+        match = cur;
+      }
+      if (match) {
+        if (match === cur) cur = cur.nextSibling;
+        else parent.insertBefore(match, cur); // élément déplacé (nouvel ordre de tri…)
+        morphNode(match, nn);
+      } else {
+        parent.insertBefore(nn, cur); // nouvel élément
+      }
+      nn = after;
+    }
+    while (cur) { // anciens éléments absents de la nouvelle version
+      const after = cur.nextSibling;
+      cur.remove();
+      cur = after;
+    }
+  }
+
   let lastBody = '';
   function renderBody(enter = false) {
     if (enter) limit = PAGE; // nouvel onglet ou nouveaux filtres : on repart des premières cartes
@@ -1725,7 +1806,8 @@
     lastBody = html;
     const body = $('#body');
     body.classList.toggle('enter', enter);
-    body.innerHTML = html;
+    if (enter) body.innerHTML = html; // nouvelle page : tout est neuf
+    else morph(body, html);
     setupReveal(enter);
   }
 
@@ -2049,37 +2131,36 @@
     }
   }
 
-  /** Bande néon qui balaie l'écran pendant un changement d'onglet. */
-  function warp() {
-    if (reduceMotion.matches) return;
-    const el = $('#warp');
-    el.classList.remove('run');
-    void el.offsetWidth; // relance l'animation
-    el.classList.add('run');
+  /** Relance une animation CSS déjà jouée, sans forcer de recalcul de la mise en page. */
+  function replay(el, cls, name) {
+    if (!el.classList.contains(cls)) { el.classList.add(cls); return; }
+    for (const a of el.getAnimations({ subtree: true })) if (a.animationName === name) { a.cancel(); a.play(); }
   }
 
-  /** Change de page avec une View Transition (glissement selon le sens de navigation). */
-  let transitions = 0;
+  /** Bande néon qui balaie l'écran pendant un changement de page. */
+  function warp() {
+    if (!reduceMotion.matches) replay($('#warp'), 'run', 'warp');
+  }
+
+  /** Change de page : la nouvelle page s'affiche tout de suite et glisse du côté de la page choisie.
+   *  Seuls opacity et transform sont animés, et la page reste cliquable pendant l'animation
+   *  (l'API View Transitions, utilisée avant, figeait l'écran et perdait les clics). */
+  const main = $('main.wrap');
+  let pageAnim = null;
   function transition(dir, update) {
     warp();
-    if (!document.startViewTransition || reduceMotion.matches || document.hidden) { update(); return; }
-    const root = document.documentElement;
-    root.dataset.dir = dir;
-    root.classList.add('vt'); // nomme les zones animées le temps de la transition
-    transitions++;
-    const vt = document.startViewTransition(update);
-    vt.ready.catch(() => {}); // transition remplacée par une plus récente (clics rapides) : rien à signaler
-    vt.finished.finally(() => {
-      if (--transitions === 0) root.classList.remove('vt');
-    });
+    update();
+    if (reduceMotion.matches || document.hidden) return;
+    pageAnim?.cancel();
+    pageAnim = main.animate(
+      [{ opacity: 0, transform: `translateX(${dir === 'prev' ? -40 : 40}px)` }, { opacity: 1, transform: 'none' }],
+      { duration: 360, easing: 'cubic-bezier(.2, .8, .2, 1)' },
+    );
   }
 
   /** Éclair le long de l'en-tête quand une synchronisation se termine. */
   function pulseSync() {
-    const top = $('.top');
-    top.classList.remove('synced');
-    void top.offsetWidth;
-    top.classList.add('synced');
+    replay($('.top'), 'synced', 'sync-sweep');
   }
 
   // Les cartes se matérialisent quand elles entrent à l'écran ; celles déjà vues restent en place
@@ -2445,12 +2526,15 @@
   });
 
   // Image cassée → image générée ; image minuscule (pixel de suivi) → idem.
+  // L'adresse est retenue : les rendus suivants affichent directement l'image générée (pas de nouvel essai, pas de clignotement).
   const swapImage = (img) => {
+    badImages.add(img.getAttribute('src'));
     if (img.classList.contains('av')) { img.style.visibility = 'hidden'; return; }
     const card = img.closest('.card');
     if (!card) return;
-    const src = SRC[card.dataset.src] || { name: card.querySelector('.src')?.textContent || '?' };
-    img.outerHTML = phHTML(src);
+    const shown = card.querySelector('.src')?.textContent;
+    const s = SRC[card.dataset.src];
+    img.outerHTML = phHTML(s && s.name === shown ? s : { name: shown || '?' });
   };
   document.addEventListener('error', (e) => { if (e.target.tagName === 'IMG') swapImage(e.target); }, true);
   document.addEventListener('load', (e) => {
