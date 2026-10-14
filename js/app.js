@@ -9,7 +9,7 @@
 (() => {
   'use strict';
 
-  const { PROJECT = {}, TYPES, CATEGORIES, SOURCES } = window.NEXUS;
+  const { PROJECT = {}, TYPES, CATEGORIES, SOURCES, BOARD = null } = window.NEXUS;
   const SRC = Object.fromEntries(SOURCES.map((s) => [s.id, s]));
   const CAT = Object.fromEntries(CATEGORIES.map((c) => [c.id, c]));
   const TABS = [
@@ -34,7 +34,8 @@
   const PROJECTS_ABOUT = 'Dépôts GitHub publics : le code est vérifiable. Classés par étoiles ou par activité récente.';
   const PLAY_ABOUT = 'Les jeux rétro-ingéniérés auxquels vous pouvez jouer : en ligne, ou à télécharger depuis leur page officielle, avec la marche à suivre.';
   const GAMES = window.NEXUS_GAMES || [];
-  const SUBS = { news: '', projects: 'projets', play: 'jouer' }; // sous-onglets et leur suffixe d'adresse (#jeux/jouer)
+  const RANK_ABOUT = 'Les modèles d’IA classés par intelligence, code, agents, prix, contexte, taille ou date de sortie, à partir de données publiques mises à jour en continu.';
+  const SUBS = { news: '', rank: 'classement', projects: 'projets', play: 'jouer' }; // sous-onglets et leur suffixe d'adresse (#jeux/jouer)
   const NEEDS = {
     free: { label: 'Rien à fournir', hint: 'Fonctionne avec des données libres ou offertes.' },
     demo: { label: 'Démo gratuite', hint: 'Jouable avec une version de démonstration ou shareware gratuite ; le jeu complet demande vos fichiers.' },
@@ -50,6 +51,8 @@
   const CUSTOM_KEY = 'nexus.custom';
   const DISABLED_KEY = 'nexus.disabled'; // sources du catalogue retirées par l'utilisateur
   const PAGES_KEY = 'nexus.pages'; // pages perso (F1, Foot, Politique…)
+  const BOARD_KEY = 'nexus.board'; // dernier classement des modèles d'IA reçu
+  const SIZES_KEY = 'nexus.sizes'; // nombre de paramètres des modèles à poids ouverts (ne change pas)
   const THEMES = window.NEXUS_THEMES || []; // modèles de pages (js/themes.js)
   const PAGE_ICONS = ['news', 'landmark', 'vote', 'users', 'car', 'flag', 'ball', 'trophy', 'dumbbell', 'chart', 'briefcase', 'film', 'music', 'games', 'rocket', 'leaf', 'heart', 'book', 'globe', 'star', 'ai', 'chip', 'shield', 'chat'];
   const PAGE_COLORS = ['#00e5ff', '#4d8dff', '#8b5cf6', '#ff2bd6', '#ff4d6d', '#f97316', '#ffb020', '#ffd34d', '#a3ff12', '#5eead4'];
@@ -308,6 +311,93 @@
   const isActive = (s) => !disabled.has(s.id);
   const activeSources = () => SOURCES.filter(isActive);
 
+  // ───────── Classement des modèles d'IA : données ─────────
+  // Une ligne par modèle évalué par Artificial Analysis, d'après le catalogue public d'OpenRouter.
+  const BOARD_SORTS = {
+    intel: { label: 'Intelligence', dir: 'desc' },
+    code: { label: 'Code', dir: 'desc' },
+    agent: { label: 'Agents', dir: 'desc' },
+    value: { label: 'Intelligence par dollar', dir: 'desc' },
+    blend: { label: 'Prix mixte', dir: 'asc' },
+    pin: { label: 'Prix en entrée', dir: 'asc' },
+    pout: { label: 'Prix en sortie', dir: 'asc' },
+    ctx: { label: 'Contexte', dir: 'desc' },
+    params: { label: 'Taille (paramètres)', dir: 'desc' },
+    created: { label: 'Date de sortie', dir: 'desc' },
+    cutoff: { label: 'Date des connaissances', dir: 'desc' },
+    name: { label: 'Nom', dir: 'asc' },
+  };
+  const BOARD_CAPS = { all: 'Toutes capacités', reasoning: 'Raisonnement', tools: 'Outils (appels de fonctions)', image: 'Images en entrée', audio: 'Audio en entrée', video: 'Vidéo en entrée', free: 'Version gratuite' };
+  const CREATORS = { mistralai: 'Mistral', rekaai: 'Reka', qwen: 'Qwen', 'meta-llama': 'Meta', 'x-ai': 'xAI', openai: 'OpenAI' };
+  const HF_RE = /^[\w.-]+\/[\w.-]+$/;
+  const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+
+  /** Catalogue OpenRouter → lignes du classement (variantes :free / :batch regroupées). */
+  function buildBoard(data) {
+    const all = Array.isArray(data?.data) ? data.data : [];
+    if (!all.length) throw new Error('Réponse inattendue du catalogue OpenRouter');
+    const groups = new Map();
+    for (const m of all) {
+      if (!m?.id || m.alias_target) continue;
+      const [base, variant = 'main'] = String(m.id).split(':');
+      if (!groups.has(base)) groups.set(base, {});
+      groups.get(base)[variant] = m;
+    }
+    const perM = (v) => { const n = Number(v); return v != null && Number.isFinite(n) && n >= 0 ? n * 1e6 : null; };
+    const rows = [];
+    for (const [base, g] of groups) {
+      const m = g.main || g.free || Object.values(g)[0];
+      const aa = m.benchmarks?.artificial_analysis;
+      const intel = num(aa?.intelligence_index);
+      const url = safeUrl(`https://openrouter.ai/${m.id}`);
+      if (intel == null || !url) continue;
+      const name = String(m.name || base);
+      const cut = name.indexOf(': ');
+      const slug = base.split('/')[0];
+      const pin = perM(m.pricing?.prompt);
+      const pout = perM(m.pricing?.completion);
+      const blend = pin != null && pout != null ? (3 * pin + pout) / 4 : null; // 3 tokens lus pour 1 écrit
+      const inputs = m.architecture?.input_modalities || [];
+      const params = m.supported_parameters || [];
+      rows.push({
+        id: base, url,
+        name: (cut > 0 ? name.slice(cut + 2) : name).replace(/\s*\((?:free|batch)\)\s*$/i, '').replace(/\s+/g, ' ').trim().slice(0, 80),
+        creator: (cut > 0 ? name.slice(0, cut) : CREATORS[slug] || slug.charAt(0).toUpperCase() + slug.slice(1)).slice(0, 40),
+        intel, code: num(aa?.coding_index), agent: num(aa?.agentic_index),
+        pin, pout, blend, value: blend > 0 ? intel / blend : null,
+        ctx: Number(m.context_length) || null,
+        created: (Number(m.created) || 0) * 1000 || null,
+        cutoff: parseDate(m.knowledge_cutoff) || null,
+        hf: typeof m.hugging_face_id === 'string' && HF_RE.test(m.hugging_face_id) ? m.hugging_face_id : '',
+        free: !!g.free || (pin === 0 && pout === 0),
+        reasoning: params.includes('reasoning'),
+        tools: params.includes('tools'),
+        mods: ['image', 'audio', 'video'].filter((x) => inputs.includes(x)),
+        desc: clip(String(m.description || '').replace(/\s+/g, ' ').trim(), 240),
+      });
+    }
+    return rows;
+  }
+
+  function loadSavedBoard() {
+    const saved = readJSON(BOARD_KEY, null);
+    const rows = Array.isArray(saved?.rows)
+      ? saved.rows.filter((r) => r && typeof r.id === 'string' && typeof r.name === 'string' && num(r.intel) != null && safeUrl(r.url))
+        .map((r) => ({ ...r, hf: HF_RE.test(r.hf || '') ? r.hf : '', mods: Array.isArray(r.mods) ? r.mods : [] }))
+      : [];
+    return { at: rows.length ? Number(saved.at) || 0 : 0, rows, error: '', loading: false };
+  }
+
+  let sizes = readJSON(SIZES_KEY, {});
+  if (!sizes || typeof sizes !== 'object' || Array.isArray(sizes)) sizes = {};
+  /** Taille d'un modèle à poids ouverts : Hugging Face, sinon le nom (« 550B A55B » → 550 milliards). */
+  const sizeOf = (r) => {
+    if (!r.hf) return null;
+    if (sizes[r.hf] > 0) return sizes[r.hf];
+    const m = /(\d+(?:\.\d+)?)\s*([BT])\b/i.exec(`${r.name} ${r.hf}`.replace(/\bA\d+(?:\.\d+)?B\b/gi, ''));
+    return m ? Number(m[1]) * (m[2].toUpperCase() === 'T' ? 1e12 : 1e9) : null;
+  };
+
   // ───────── État ─────────
   const saved = readJSON(STORE_KEY, {}) || {};
   let favs = readJSON(FAVS_KEY, {});
@@ -326,6 +416,12 @@
     projSort: saved.projSort === 'recent' ? 'recent' : 'stars',
     favSort: saved.favSort === 'date' ? 'date' : 'added',
     playFilter: 'all', // vue « Jouer » : all | online | free | own
+    board: loadSavedBoard(), // classement des modèles d'IA
+    boardSort: BOARD_SORTS[saved.boardSort] ? saved.boardSort : 'intel',
+    boardDir: saved.boardDir === 'asc' ? 'asc' : saved.boardDir === 'desc' ? 'desc' : BOARD_SORTS[saved.boardSort]?.dir || 'desc',
+    boardWeights: 'all', // all | open | closed
+    boardCap: 'all',
+    boardCreator: 'all',
     hidden: new Set((saved.hidden || []).filter((id) => SRC[id])),
     auto: saved.auto ?? true,
     interval: INTERVALS.some(([v]) => v === saved.interval) ? saved.interval : 60,
@@ -346,6 +442,7 @@
   function persist() {
     writeJSON(STORE_KEY, {
       lang: state.lang, period: state.period, view: state.view, projSort: state.projSort, favSort: state.favSort,
+      boardSort: state.boardSort, boardDir: state.boardDir,
       hidden: [...state.hidden], auto: state.auto, interval: state.interval,
       results: state.results, firstSeen: state.firstSeen, lastVisit: state.lastVisit, lastSync: state.lastSync,
     });
@@ -599,6 +696,8 @@
   }
 
   async function refresh(manual = false) {
+    // Classement affiché : le bouton le recharge aussi (au plus une fois par minute).
+    if (manual && state.sub === 'rank') loadBoard(Date.now() - state.board.at > 60e3);
     if (state.loading) {
       state.again = true; // source ajoutée ou rétablie pendant un cycle : on relance juste après
       return;
@@ -1165,6 +1264,151 @@
       ${list.length ? `<div class="grid games">${list.map(gameHTML).join('')}</div>` : `<div class="empty">${icon('filter')}<b>Aucun jeu</b><p>Aucun jeu ne correspond à ces filtres.</p></div>`}`;
   }
 
+  // ───────── Classement des modèles d'IA : chargement et affichage ─────────
+  let boardJob = null;
+  /** Recharge le classement s'il a plus de 30 min (ou tout de suite si force). */
+  function loadBoard(force = false) {
+    if (!BOARD || boardJob) return boardJob;
+    const fresh = Date.now() - state.board.at < BOARD.minAge * 1000;
+    if (!force && fresh && state.board.rows.length) return null;
+    const first = !state.board.rows.length;
+    state.board.loading = true;
+    boardJob = (async () => {
+      try {
+        const rows = buildBoard(JSON.parse(await getText(BOARD.models, false)));
+        state.board = { at: Date.now(), rows, error: '', loading: false };
+        writeJSON(BOARD_KEY, { at: state.board.at, rows });
+      } catch (err) {
+        Object.assign(state.board, { loading: false, error: err instanceof SyntaxError ? 'Réponse illisible du catalogue OpenRouter' : err.message });
+      }
+      boardJob = null;
+      if (state.sub === 'rank') {
+        if (first) renderHead(); // la liste des créateurs arrive avec les données
+        renderBody();
+      }
+      loadSizes();
+    })();
+    return boardJob;
+  }
+
+  let sizesJob = null;
+  /** Nombre de paramètres des modèles à poids ouverts, demandé une seule fois par modèle. */
+  function loadSizes() {
+    if (!BOARD || sizesJob) return;
+    const todo = [...new Set(state.board.rows.map((r) => r.hf).filter((hf) => hf && !(hf in sizes)))];
+    if (!todo.length) return;
+    sizesJob = pool(todo, CONCURRENCY, async (hf) => {
+      try {
+        const data = JSON.parse(await getText(`${BOARD.sizes}${hf}?expand%5B%5D=safetensors`, false));
+        sizes[hf] = Number(data?.safetensors?.total) || 0; // 0 : taille non publiée (on se rabat sur le nom)
+      } catch { /* dépôt privé ou retiré : nouvel essai au prochain chargement */ }
+    }).then(() => {
+      writeJSON(SIZES_KEY, sizes);
+      sizesJob = null;
+      if (state.sub === 'rank') renderBody();
+    });
+  }
+
+  function boardRows() {
+    const tokens = norm(state.q).split(/\s+/).filter(Boolean);
+    const cap = state.boardCap;
+    return state.board.rows.filter((r) => {
+      if (state.boardWeights === 'open' && !r.hf) return false;
+      if (state.boardWeights === 'closed' && r.hf) return false;
+      if (state.boardCreator !== 'all' && r.creator !== state.boardCreator) return false;
+      if ((cap === 'reasoning' && !r.reasoning) || (cap === 'tools' && !r.tools) || (cap === 'free' && !r.free)) return false;
+      if (['image', 'audio', 'video'].includes(cap) && !r.mods.includes(cap)) return false;
+      if (!tokens.length) return true;
+      const hay = norm(`${r.name} ${r.creator} ${r.id}`);
+      return tokens.every((t) => hay.includes(t));
+    });
+  }
+
+  /** Tri : les valeurs inconnues vont toujours à la fin ; à égalité, le plus intelligent d'abord. */
+  function sortBoard(list) {
+    const key = state.boardSort;
+    const dir = state.boardDir === 'asc' ? 1 : -1;
+    const val = (r) => (key === 'params' ? sizeOf(r) : r[key]);
+    return list.sort((a, b) => {
+      if (key === 'name') return dir * a.name.localeCompare(b.name, 'fr');
+      const x = val(a);
+      const y = val(b);
+      if (x == null || y == null) return (x == null) - (y == null) || b.intel - a.intel;
+      return dir * (x - y) || b.intel - a.intel;
+    });
+  }
+
+  const nf = (n, digits = 1) => n.toLocaleString('fr-FR', { maximumFractionDigits: digits });
+  const fmtPrice = (p) => (p == null ? '—' : p === 0 ? 'Gratuit' : `${p.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: p < 0.1 ? 3 : 2 })} $`);
+  const fmtCtx = (c) => (!c ? '—' : c >= 1e6 ? `${nf(c / 1e6)} M` : `${nf(c / 1e3, 0)} k`);
+  const fmtSize = (n) => (!n ? '—' : n >= 1e12 ? `${nf(n / 1e12)} T` : n >= 1e9 ? `${nf(n / 1e9, n < 1e10 ? 1 : 0)} B` : `${nf(n / 1e6, 0)} M`);
+  const fmtMonth = (t) => (t ? new Date(t).toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' }) : '—');
+  const dirLabel = () => (state.boardDir === 'asc' ? '↑ Croissant' : '↓ Décroissant');
+  const MOD_ICONS = { image: ['eye', 'Images'], audio: ['music', 'Audio'], video: ['film', 'Vidéo'] };
+
+  function boardRowHTML(r, i, max) {
+    const key = state.boardSort;
+    const td = (k, label, inner, extra = '') => `<td class="b-${k}${k === key ? ' on' : ''}" data-label="${label}"${extra}>${inner}</td>`;
+    const size = sizeOf(r);
+    const tags = [
+      r.hf ? `<a class="b-tag open" href="https://huggingface.co/${esc(r.hf)}" target="_blank" rel="noopener noreferrer" title="Poids téléchargeables sur Hugging Face : ${esc(r.hf)}">Poids ouverts</a>` : '',
+      r.reasoning ? '<span class="b-tag" title="Peut raisonner avant de répondre">Raisonnement</span>' : '',
+      r.free ? '<span class="b-tag free" title="Une version gratuite existe sur OpenRouter (avec des limites d’usage)">Gratuit</span>' : '',
+      r.mods.length ? `<span class="b-mods" title="Accepte aussi en entrée : ${r.mods.map((m) => MOD_ICONS[m][1].toLowerCase()).join(', ')}">${r.mods.map((m) => icon(MOD_ICONS[m][0])).join('')}</span>` : '',
+    ].join('');
+    return `<tr class="b-row${i < 3 ? ` m${i + 1}` : ''}" style="--h:${hue(r.creator)}">
+      <td class="b-rank"><span>${i + 1}</span></td>
+      <td class="b-model${key === 'name' ? ' on' : ''}"><a class="b-name" href="${esc(r.url)}" target="_blank" rel="noopener noreferrer" title="${esc(r.desc || r.name)}">${esc(r.name)}</a>
+        <div class="b-sub"><span class="b-creator">${esc(r.creator)}</span>${tags}</div></td>
+      ${td('intel', 'Intelligence', `<b>${nf(r.intel)}</b><span class="b-bar"><i style="width:${Math.max(2, (r.intel / max) * 100).toFixed(1)}%"></i></span>`)}
+      ${td('code', 'Code', r.code == null ? '—' : nf(r.code))}
+      ${td('agent', 'Agents', r.agent == null ? '—' : nf(r.agent))}
+      ${td('pin', 'Entrée $/M', fmtPrice(r.pin))}
+      ${td('pout', 'Sortie $/M', fmtPrice(r.pout))}
+      ${td('value', 'Intel. / $', r.value == null ? '—' : nf(r.value, r.value < 10 ? 1 : 0), r.blend != null ? ` title="Prix mixte : ${fmtPrice(r.blend)} par million de tokens"` : '')}
+      ${td('ctx', 'Contexte', fmtCtx(r.ctx), r.ctx ? ` title="${r.ctx.toLocaleString('fr-FR')} tokens"` : '')}
+      ${td('params', 'Taille', size ? fmtSize(size) : '<span class="dim">—</span>', size ? ` title="${Math.round(size).toLocaleString('fr-FR')} paramètres"` : ' title="Taille non publiée par le créateur"')}
+      ${td('created', 'Date de sortie', `${fmtMonth(r.created)}${r.cutoff ? `<small title="Date limite des connaissances">savoir : ${fmtMonth(r.cutoff)}</small>` : ''}`)}
+    </tr>`;
+  }
+
+  function boardHTML() {
+    loadBoard();
+    const { rows, at, error, loading } = state.board;
+    const ext = (href, text) => `<a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+    const note = `<div class="play-note board-note">${icon('info')}<p><b>Index d’intelligence</b> : score de synthèse calculé par ${ext('https://artificialanalysis.ai/', 'Artificial Analysis')} sur une série de tests (raisonnement, connaissances, maths, code…), avec des indices dédiés au code et aux agents.
+      Prix, contexte et dates : catalogue public d’${ext('https://openrouter.ai/models', 'OpenRouter')} ; taille des modèles à poids ouverts : Hugging Face.
+      Prix en dollars par million de tokens. La vitesse et la latence ne sont pas publiées par ces sources ouvertes : voir le ${ext('https://artificialanalysis.ai/leaderboards/models', 'classement complet d’Artificial Analysis')}.</p></div>`;
+    if (!rows.length) {
+      if (error) {
+        return `${note}<div class="empty">${icon('alert')}<b>Classement indisponible</b><p>${esc(error)}</p>
+          <button class="btn" data-act="board-retry">${icon('undo')}Réessayer</button></div>`;
+      }
+      return `${note}<div class="board-wrap"><div class="sk-row"></div>${'<div class="sk-row"></div>'.repeat(9)}</div>`;
+    }
+    const max = Math.max(...rows.map((r) => r.intel));
+    const best = (list, f) => list.filter((r) => f(r) != null).reduce((a, b) => (a && f(a) >= f(b) ? a : b), null);
+    const highlights = [
+      ['trophy', 'Le plus intelligent', best(rows, (r) => r.intel), (r) => `indice ${nf(r.intel)}`],
+      ['code', 'Le meilleur en code', best(rows, (r) => r.code), (r) => `indice code ${nf(r.code)}`],
+      ['download', 'Meilleur à poids ouverts', best(rows.filter((r) => r.hf), (r) => r.intel), (r) => `indice ${nf(r.intel)}${sizeOf(r) ? ` · ${fmtSize(sizeOf(r))}` : ''}`],
+      ['star', 'Meilleur rapport qualité / prix', best(rows.filter((r) => r.intel >= max * 0.75), (r) => r.value), (r) => `indice ${nf(r.intel)} · ${fmtPrice(r.blend)}/M mixte`],
+    ].filter(([, , r]) => r).map(([ic, label, r, detail]) => `<a class="b-hi" href="${esc(r.url)}" target="_blank" rel="noopener noreferrer" style="--h:${hue(r.creator)}">
+        <span class="b-hi-k">${icon(ic)}${label}</span><b>${esc(r.name)}</b><em>${esc(r.creator)} · ${detail(r)}</em></a>`).join('');
+    const list = sortBoard(boardRows());
+    const key = state.boardSort;
+    const th = (k, label, cls = '') => `<th class="b-${cls || k}${k === key ? ' on' : ''}"${k === key ? ` aria-sort="${state.boardDir === 'asc' ? 'ascending' : 'descending'}"` : ''}>
+      <button type="button" data-act="bsort" data-v="${k}" title="Trier par ${esc(BOARD_SORTS[k].label.toLowerCase())}">${label}${k === key ? `<i>${state.boardDir === 'asc' ? '↑' : '↓'}</i>` : ''}</button></th>`;
+    const table = list.length ? `<div class="board-wrap"><table class="board">
+        <thead><tr><th class="b-rank">#</th>${th('name', 'Modèle', 'model')}${th('intel', 'Intelligence')}${th('code', 'Code')}${th('agent', 'Agents')}${th('pin', 'Entrée $/M')}${th('pout', 'Sortie $/M')}${th('value', 'Intel. / $')}${th('ctx', 'Contexte')}${th('params', 'Taille')}${th('created', 'Date')}</tr></thead>
+        <tbody>${list.map((r, i) => boardRowHTML(r, i, max)).join('')}</tbody></table></div>`
+      : `<div class="empty">${icon('filter')}<b>Aucun modèle</b><p>Aucun modèle ne correspond à ces filtres.</p></div>`;
+    const open = rows.filter((r) => r.hf).length;
+    return `${note}<div class="b-his">${highlights}</div>
+      <div class="count-line"><span><b>${list.length}</b> modèle${list.length > 1 ? 's' : ''}${list.length !== rows.length ? ` sur ${rows.length}` : ''} · ${open} à poids ouverts · mis à jour ${timeTag(at)}${loading ? ' · actualisation…' : ''}${error ? ` · ⚠ ${esc(error)}` : ''}</span></div>
+      ${table}`;
+  }
+
   /** Bouton « Afficher plus » ; il se déclenche aussi tout seul en approchant du bas (voir setupReveal). */
   const moreHTML = (left) => (left > 0
     ? `<div id="more" class="load-more"><button type="button" class="btn ghost" data-act="more">${icon('plus')}Afficher plus <span>(${left} restant${left > 1 ? 's' : ''})</span></button></div>`
@@ -1277,6 +1521,7 @@
     ];
     const features = [
       'L’actualité IA, informatique et cybersécurité, en français et en anglais',
+      'Le classement des modèles d’IA : intelligence, code, agents, prix, contexte, taille, date de sortie',
       'Les apps et jeux rétro-ingéniérés : articles et catalogue des projets GitHub',
       'Un rafraîchissement automatique, jusqu’à toutes les 30 secondes',
       'La recherche et des filtres par langue, date et type de source',
@@ -1343,6 +1588,19 @@
     </div>`;
 
   function toolbarHTML() {
+    if (state.sub === 'rank') {
+      const counts = new Map();
+      for (const r of state.board.rows) counts.set(r.creator, (counts.get(r.creator) || 0) + 1);
+      const creators = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'fr'));
+      const select = (act, label, options, current) => `<select class="ctl" data-act="${act}" aria-label="${label}">${options.map(([v, l]) => `<option value="${esc(v)}"${v === current ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
+      return `<div class="toolbar">${searchHTML('Rechercher un modèle, un créateur…')}
+        ${select('boardSort', 'Trier par', Object.entries(BOARD_SORTS).map(([k, s]) => [k, `Trier : ${s.label}`]), state.boardSort)}
+        <button type="button" class="btn ghost b-dir" data-act="bdir" title="Inverser l’ordre">${dirLabel()}</button>
+        ${seg('bweights', state.boardWeights, [['all', 'Tous'], ['open', `${icon('download')}Poids ouverts`], ['closed', `${icon('lock')}Propriétaires`]])}
+        ${select('boardCap', 'Capacités', Object.entries(BOARD_CAPS), state.boardCap)}
+        ${select('boardCreator', 'Créateur', [['all', 'Tous les créateurs'], ...creators.map(([c, n]) => [c, `${c} (${n})`])], state.boardCreator)}
+      </div>`;
+    }
     if (state.sub === 'play') {
       return `<div class="toolbar">${searchHTML('Rechercher un jeu, une console…')}
         ${seg('playf', state.playFilter, [['all', 'Tous'], ['online', `${icon('play')}Jouables en ligne`], ['free', 'Gratuits'], ['own', 'Avec votre copie']])}</div>`;
@@ -1422,12 +1680,14 @@
     const t = TAB[state.tab];
     const cat = CAT[state.tab];
     document.documentElement.style.setProperty('--c', t.color);
-    const about = { projects: PROJECTS_ABOUT, play: PLAY_ABOUT }[state.sub]
+    const about = { projects: PROJECTS_ABOUT, play: PLAY_ABOUT, rank: RANK_ABOUT }[state.sub]
       || (cat?.custom ? 'Votre page perso, enregistrée dans ce navigateur. Ses sources apparaissent ci-dessous ; « Personnaliser » change son nom, son icône, sa couleur et ses mots-clés.' : t.about);
     const edit = cat?.custom ? `<button type="button" class="btn ghost v-edit" data-act="edit-page">${icon('edit')}Personnaliser</button>` : '';
     let html = `<div class="v-title"><span class="ico">${icon(t.icon)}</span><div><h1>${esc(t.long)}</h1><p class="v-sub">${esc(about)}</p></div>${edit}</div>`;
-    if (cat?.projects) {
-      const subs = [['news', 'Actualités'], ['projects', 'Projets GitHub']];
+    if (cat?.projects || cat?.board) {
+      const subs = [['news', 'Actualités']];
+      if (cat.board) subs.push(['rank', `${icon('trophy')}Classement`]);
+      if (cat.projects) subs.push(['projects', 'Projets GitHub']);
       if (state.tab === 'jeux') subs.push(['play', `${icon('play')}Jouer`]);
       html += `<div class="subnav" role="tablist">${subs.map(([v, label]) => `<button data-act="sub" data-v="${v}" class="${state.sub === v ? 'on' : ''}" role="tab" aria-selected="${state.sub === v}">${label}</button>`).join('')}</div>`;
     }
@@ -1454,6 +1714,7 @@
     else if (state.tab === 'apropos') html = aboutHTML();
     else if (state.sub === 'projects') html = projectsHTML(state.tab);
     else if (state.sub === 'play') html = playHTML();
+    else if (state.sub === 'rank') html = boardHTML();
     else html = newsHTML(state.tab);
     if (state.tab === 'radar') updateTicker();
     if (CAT[state.tab] && !document.hidden) {
@@ -1993,6 +2254,7 @@
     state.sub = 'news';
     if (sub === 'projets' && CAT[state.tab]?.projects) state.sub = 'projects';
     if (sub === 'jouer' && state.tab === 'jeux') state.sub = 'play';
+    if (sub === 'classement' && CAT[state.tab]?.board) state.sub = 'rank';
   }
 
   function go(enter = true) {
@@ -2045,6 +2307,24 @@
         setTimeout(() => { location.hash = SUBS[v] ? `${state.tab}/${SUBS[v]}` : state.tab; }, reduceMotion.matches ? 0 : 170);
         return;
       case 'playf': state.playFilter = v; markSeg(); break;
+      case 'bweights': state.boardWeights = v; markSeg(); break;
+      case 'bsort': { // en-tête de colonne : même colonne → ordre inversé
+        if (state.boardSort === v) state.boardDir = state.boardDir === 'asc' ? 'desc' : 'asc';
+        else Object.assign(state, { boardSort: v, boardDir: BOARD_SORTS[v].dir });
+        const select = $('#head select[data-act="boardSort"]');
+        if (select) select.value = v;
+        const dir = $('#head [data-act="bdir"]');
+        if (dir) dir.textContent = dirLabel();
+        break;
+      }
+      case 'bdir':
+        state.boardDir = state.boardDir === 'asc' ? 'desc' : 'asc';
+        el.textContent = dirLabel();
+        break;
+      case 'board-retry':
+        loadBoard(true);
+        renderBody();
+        return;
       case 'lang': state.lang = v; markSeg(); break;
       case 'view': state.view = v; markSeg(); break;
       case 'sort': state.projSort = v; markSeg(); break;
@@ -2149,6 +2429,11 @@
     const el = e.target.closest('select[data-act]');
     if (!el) return;
     state[el.dataset.act] = el.value;
+    if (el.dataset.act === 'boardSort') { // nouveau critère : son ordre naturel (prix croissant, score décroissant…)
+      state.boardDir = BOARD_SORTS[el.value]?.dir || 'desc';
+      const dir = $('#head [data-act="bdir"]');
+      if (dir) dir.textContent = dirLabel();
+    }
     persistSoon();
     renderBody(true);
   });

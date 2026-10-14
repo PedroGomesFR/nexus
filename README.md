@@ -46,6 +46,7 @@ NEXUS rassemble tout sur une seule page :
 | 🛰️ **Radar** | Vue d'ensemble : derniers titres de chaque rubrique, bandeau « en direct », statistiques |
 | 🔄 **Temps réel** | Rafraîchissement automatique de 30 s à 15 min, bouton manuel, badge sur le menu et les rubriques qui ont du nouveau |
 | 🔎 **Filtres** | Recherche, langue (FR / EN), période, type de source, vue cartes ou liste |
+| 🏆 **Classement des IA** | Tous les modèles évalués par Artificial Analysis : index d'intelligence, de code et d'agents, prix d'entrée et de sortie, intelligence par dollar, contexte, taille (poids ouverts), date de sortie. Tri par colonne, filtres poids ouverts / propriétaires, capacités et créateur |
 | 🎮 **Projets GitHub** | Catalogue des décompilations de jeux et des apps / API rétro-ingéniérées, triés par étoiles ou par activité |
 | 🕹️ **Jouer** | 25 jeux rétro-ingéniérés : liens officiels pour jouer en ligne ou télécharger, ce qu'il faut fournir et comment les lancer |
 | 🗂️ **Pages perso** | Une page sur le sujet de votre choix, avec son icône et sa couleur : 13 modèles prêts à l'emploi (politique, F1, foot, voiture…) avec des médias vérifiés, des mots-clés suivis dans la presse via Google Actualités, et vos propres sites |
@@ -57,6 +58,9 @@ NEXUS rassemble tout sur une seule page :
 | ✨ **Interface** | Thème néon, menu hamburger, transitions animées, adapté au mobile, raccourcis clavier |
 
 <table>
+  <tr>
+    <td colspan="2"><img src="docs/classement-ia.jpg" alt="Classement des modèles d'IA triable par intelligence, prix, contexte et taille"><br><sub><b>IA → Classement</b> : les modèles d'IA triés par intelligence, code, agents, prix, contexte, taille ou date, avec les meilleurs de chaque catégorie en tête.</sub></td>
+  </tr>
   <tr>
     <td width="50%"><img src="docs/jeux-projets.jpg" alt="Catalogue des jeux décompilés sur GitHub"><br><sub><b>Reverse Jeux → Projets GitHub</b> : Pokémon, Zelda, Castlevania… décompilés par leurs communautés.</sub></td>
     <td width="50%"><img src="docs/sources-perso.jpg" alt="Ajout d'une source perso avec aperçu"><br><sub><b>Sources perso</b> : collez l'adresse d'un site, NEXUS trouve son flux et montre un aperçu.</sub></td>
@@ -80,6 +84,7 @@ NEXUS rassemble tout sur une seule page :
 | **Cybersécurité** | CERT-FR (ANSSI), NCSC (Royaume-Uni), BleepingComputer, The Hacker News, ZATAZ, Krebs on Security |
 
 Toutes les sources sont des flux RSS/Atom ou des API publiques.
+Le classement des IA vient du catalogue public d'[OpenRouter](https://openrouter.ai/models), qui reprend les indices d'[Artificial Analysis](https://artificialanalysis.ai/). La taille des modèles à poids ouverts vient de [Hugging Face](https://huggingface.co/).
 NEXUS affiche le titre, un court extrait et le lien de chaque article, comme un lecteur RSS. Le contenu appartient à ses auteurs.
 
 ## Démarrer

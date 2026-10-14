@@ -29,7 +29,7 @@ window.NEXUS = (() => {
   };
 
   const CATEGORIES = [
-    { id: 'ia', label: 'IA', long: 'Intelligence artificielle', icon: 'ai', color: '#d946ef',
+    { id: 'ia', label: 'IA', long: 'Intelligence artificielle', icon: 'ai', color: '#d946ef', board: true,
       about: 'Annonces des laboratoires (OpenAI, DeepMind, Hugging Face…) et analyses de la presse spécialisée.' },
     { id: 'apps', label: 'Reverse Apps', long: 'Apps rétro-ingéniérées', icon: 'apps', color: '#00e5ff', projects: true,
       about: 'Applications, API et protocoles décortiqués : analyses de chercheurs, articles et projets open source.' },
@@ -114,5 +114,15 @@ window.NEXUS = (() => {
     { id: 'krebs', cat: 'cyber', name: 'Krebs on Security', site: 'https://krebsonsecurity.com/', url: 'https://krebsonsecurity.com/feed/', type: 'expert', lang: 'en' },
   ];
 
-  return { PROJECT, TYPES, CATEGORIES, SOURCES };
+  // Classement des modèles d'IA (rubrique IA → Classement).
+  //   models  catalogue public d'OpenRouter : prix, contexte, date, poids ouverts, et les indices
+  //           d'Artificial Analysis (intelligence, code, agents) qu'il redistribue
+  //   sizes   API Hugging Face : nombre de paramètres des modèles à poids ouverts
+  const BOARD = {
+    models: 'https://openrouter.ai/api/v1/models',
+    sizes: 'https://huggingface.co/api/models/',
+    minAge: 1800, // 30 min entre deux mises à jour du classement
+  };
+
+  return { PROJECT, TYPES, CATEGORIES, SOURCES, BOARD };
 })();

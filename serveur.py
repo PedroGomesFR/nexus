@@ -44,7 +44,13 @@ MAX_BYTES = 10 * 1024 * 1024
 FRESH_FOR = 20  # secondes : en dessous, on ressert la copie en cache sans recontacter la source
 # Sources a quota serre (GitHub : 10 recherches/min sans jeton) et recherches Google Actualites
 # des pages perso : cache partage plus long entre visiteurs.
-FRESH_FOR_HOST = {"api.github.com": 600, "www.reddit.com": 600, "news.google.com": 300}
+FRESH_FOR_HOST = {
+    "api.github.com": 600,
+    "www.reddit.com": 600,
+    "news.google.com": 300,
+    "openrouter.ai": 1800,  # classement des modeles d'IA
+    "huggingface.co": 86400,  # taille des modeles : ne change pas
+}
 CACHE_MAX = 400  # nombre d'URL gardees en memoire
 RATE_LIMIT = 60  # en ligne : requetes par minute et par visiteur vers des sources perso
 FEED_TYPES = ("application/rss+xml", "application/atom+xml", "application/rdf+xml")
