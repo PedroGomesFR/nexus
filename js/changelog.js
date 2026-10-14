@@ -11,6 +11,16 @@
  */
 window.NEXUS_CHANGELOG = [
   {
+    version: '1.10', date: '2026-10-14', title: 'Les pages perso suivent leurs mots-clés',
+    changes: [
+      ['better', 'Pages perso : les sites de la page (médias du modèle, sites ajoutés) n’affichent plus que les articles qui parlent de vos mots-clés, en plus de la recherche Google Actualités.'],
+      ['new', 'Bandeau en haut de chaque page perso : les mots-clés suivis, le nombre d’articles masqués et un bouton « Tout afficher » pour couper le filtre.'],
+      ['new', 'Option dans « Personnaliser » : filtrer ou non les sites de la page par ses mots-clés. Activée par défaut, y compris pour les pages existantes.'],
+      ['better', 'Correspondance souple : sans accents ni majuscules, dans n’importe quel ordre, « jeune » trouve « jeunes » ; « PS » ne trouve pas « PSG ».'],
+      ['better', 'Nouveaux mots-clés appliqués tout de suite, sans faire passer les anciens articles pour des nouveautés.'],
+    ],
+  },
+  {
     version: '1.9', date: '2026-10-14', title: 'Nouveautés et numéro de version',
     changes: [
       ['new', 'Page « Nouveautés » : l’historique des versions, avec ce qui a changé depuis votre dernière visite.'],

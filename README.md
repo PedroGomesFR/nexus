@@ -12,7 +12,7 @@ Et vos propres pages sur n'importe quel sujet : F1, foot, politique…
 
 <br>
 
-[![Version 1.9](https://img.shields.io/badge/version-1.9-f9a8d4?style=for-the-badge)](CHANGELOG.md)
+[![Version 1.10](https://img.shields.io/badge/version-1.10-f9a8d4?style=for-the-badge)](CHANGELOG.md)
 ![Licence MIT](https://img.shields.io/badge/licence-MIT-00e5ff?style=for-the-badge)
 ![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-ff2bd6?style=for-the-badge&logo=python&logoColor=white)
 ![Zéro dépendance](https://img.shields.io/badge/d%C3%A9pendances-0-a3ff12?style=for-the-badge)
@@ -51,7 +51,7 @@ NEXUS rassemble tout sur une seule page :
 | 🎮 **Projets GitHub** | Catalogue des décompilations de jeux et des apps / API rétro-ingéniérées, triés par étoiles ou par activité |
 | 🕹️ **Jouer** | 25 jeux rétro-ingéniérés : liens officiels pour jouer en ligne ou télécharger, ce qu'il faut fournir et comment les lancer |
 | 🚀 **Utiliser** | 23 apps rétro-ingéniérées (pilotes, firmwares, clients libres : Gadgetbridge, OpenRGB, Asahi Linux, Wine…) : liens officiels, ce qu'il faut, comment les installer, filtres par domaine et par plateforme |
-| 🗂️ **Pages perso** | Une page sur le sujet de votre choix, avec son icône et sa couleur : 13 modèles prêts à l'emploi (politique, F1, foot, voiture…) avec des médias vérifiés, des mots-clés suivis dans la presse via Google Actualités, et vos propres sites |
+| 🗂️ **Pages perso** | Une page sur le sujet de votre choix, avec son icône et sa couleur : 13 modèles prêts à l'emploi (politique, F1, foot, voiture…) avec des médias vérifiés, des mots-clés suivis dans la presse via Google Actualités, et vos propres sites. Toute la page suit vos mots-clés : ses sites n'affichent que les articles qui en parlent |
 | 🔖 **Favoris** | Conservés même quand l'article disparaît des flux |
 | ➕ **Sources perso** | Ajoutez un site (son flux RSS est trouvé automatiquement), un flux RSS/Atom ou une recherche Hacker News |
 | 🧹 **Catalogue à la carte** | Retirez les sources qui ne vous intéressent pas, rétablissez-les en un clic |
@@ -139,6 +139,10 @@ Certains sites, comme Reddit, bloquent les serveurs d'hébergement : ces sources
 - **un modèle** : politique, politique jeunes, voiture, F1, foot, rugby, tennis, basket, économie, sciences, espace, cinéma et séries, jeux vidéo ;
 - **des mots-clés** suivis dans la presse via Google Actualités, la virgule séparant deux recherches (« F1, Formule 1 ») ;
 - **vos propres sites ou flux RSS**, ajoutés depuis la page avec « Ajouter une source ».
+
+Les mots-clés valent pour toute la page : ses sites (médias du modèle, sites ajoutés) n'affichent que les articles qui contiennent
+au moins un mot-clé, sans tenir compte des accents ni des majuscules. Un bandeau en haut de la page rappelle les mots-clés suivis,
+compte les articles masqués et permet de tout afficher. L'option se règle aussi dans **Personnaliser**.
 
 Le bouton **Personnaliser** de la page change ensuite son nom, son icône, sa couleur et ses mots-clés, ou la supprime.
 Ces choix sont enregistrés dans votre navigateur. Pour les transférer, utilisez **Exporter** puis **Importer**.

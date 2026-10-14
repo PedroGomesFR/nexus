@@ -249,6 +249,7 @@
       id, label,
       icon: PAGE_ICONS.includes(p.icon) ? p.icon : 'news',
       color: isColor(p.color) ? p.color.toLowerCase() : PAGE_COLORS[0],
+      filter: p.filter !== false, // sites de la page limités aux articles qui parlent de ses mots-clés
       createdAt: Number(p.createdAt) || Date.now(),
     };
   }
@@ -288,6 +289,34 @@
     : `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=fr&gl=FR&ceid=FR:fr`);
   /** « F1, Formule 1 » → ['F1', 'Formule 1'] : une recherche par élément (l'un ou l'autre). */
   const splitQuery = (text) => String(text || '').split(',').map((w) => w.replace(/\s+/g, ' ').trim().slice(0, 60)).filter(Boolean).slice(0, 6);
+
+  // Mots-clés d'une page perso appliqués à ses sites : un article est gardé s'il contient au moins un
+  // mot-clé, c'est-à-dire tous les mots de ce mot-clé, dans n'importe quel ordre, sans accents ni majuscules.
+  // « jeune » trouve aussi « jeunes » ; un mot de 3 lettres ou moins reste entier (« PS » ne trouve pas « PSG »).
+  const STOPWORDS = new Set(['a', 'au', 'aux', 'de', 'des', 'du', 'en', 'et', 'la', 'le', 'les', 'un', 'une', 'pour', 'sur', 'and', 'for', 'in', 'of', 'on', 'the', 'to']);
+  const matchers = new Map();
+  function keywordMatcher(query) {
+    if (!matchers.has(query)) {
+      const terms = splitQuery(query)
+        .map((t) => {
+          const words = norm(t).split(/[^a-z0-9]+/).filter(Boolean);
+          const kept = words.filter((w) => !STOPWORDS.has(w));
+          return (kept.length ? kept : words).map((w) => new RegExp(`(?:^|[^a-z0-9])${escapeRe(w)}${w.length <= 3 ? '(?:s|x)?(?![a-z0-9])' : ''}`));
+        })
+        .filter((words) => words.length);
+      matchers.set(query, terms.length ? (text) => { const h = norm(text); return terms.some((t) => t.every((re) => re.test(h))); } : null);
+    }
+    return matchers.get(query);
+  }
+  /** Mots-clés d'une page perso : ceux de sa recherche Google Actualités. */
+  const pageQuery = (catId) => SOURCES.find((s) => s.cat === catId && s.kind === 'news')?.query || '';
+  /** Pour un site d'une page perso dont le filtre est actif : le test « parle des mots-clés », sinon null.
+   *  Les résultats Google Actualités ne sont pas refiltrés : ce sont déjà les recherches de ces mots-clés. */
+  function pageFilter(src) {
+    if (src.kind === 'news' || !CAT[src.cat]?.custom) return null;
+    return pagesRaw.find((p) => p.id === src.cat)?.filter ? keywordMatcher(pageQuery(src.cat)) : null;
+  }
+  const itemText = (it) => `${it.title} ${it.summary || ''} ${(it.topics || []).join(' ')}`;
   let uidSeq = 0;
   const uid = () => `perso-${Date.now().toString(36)}-${(uidSeq++).toString(36)}`;
 
@@ -472,6 +501,13 @@
     nextAt: 0,
     lastSync: saved.lastSync || 0,
   };
+
+  // Articles enregistrés avant le filtre des pages perso (ou avant un import) : filtrés dès l'ouverture.
+  for (const s of SOURCES) {
+    const keep = pageFilter(s);
+    const r = state.results[s.id];
+    if (keep && r) r.items = r.items.filter((it) => keep(itemText(it)));
+  }
 
   function persist() {
     writeJSON(STORE_KEY, {
@@ -715,17 +751,20 @@
 
     const now = Date.now();
     const prevDates = new Map((state.results[src.id]?.items || []).map((p) => [p.id, p.date]));
+    const keep = pageFilter(src); // site d'une page perso : seulement ce qui parle de ses mots-clés
     const seen = new Set();
     const items = [];
+    let skipped = 0;
     for (const raw of done.flatMap((s) => s.value)) {
       if (!raw.link || !raw.title) continue;
       const it = { ...raw }; // copie : l'analyse du flux est réutilisée telle quelle au prochain cycle
-      const hay = `${it.title} ${it.summary} ${(it.topics || []).join(' ')}`;
+      const hay = itemText(it);
       if (src.include && !src.include.test(hay)) continue;
       if (src.exclude && src.exclude.test(hay)) continue;
       it.id = normId(it.link);
       if (seen.has(it.id)) continue;
       seen.add(it.id);
+      if (keep && !keep(hay)) { skipped++; continue; }
       it.src = src.id;
       // Flux qui annoncent l'heure locale comme du GMT (option tz dans sources.js).
       if (src.tz && it.date) it.date -= tzOffset(src.tz, it.date);
@@ -737,6 +776,7 @@
     const failed = settled.length - done.length;
     return {
       items: items.slice(0, src.limit || 25),
+      skipped,
       ms: Math.round(performance.now() - t0),
       warn: failed ? `${failed} requête(s) sur ${settled.length} en échec : ${settled.find((s) => s.status === 'rejected').reason.message}` : '',
     };
@@ -758,7 +798,7 @@
       return;
     }
     const now = Date.now();
-    const due = activeSources().filter((s) => now - (state.results[s.id]?.at || 0) >= (s.minAge ?? 30) * 1000 - 1500);
+    const due = activeSources().filter((s) => state.results[s.id]?.rebase || now - (state.results[s.id]?.at || 0) >= (s.minAge ?? 30) * 1000 - 1500);
     if (!due.length) {
       if (manual) toast('Déjà à jour', 'Toutes les sources ont été interrogées il y a moins de 30 secondes.');
       schedule();
@@ -776,17 +816,18 @@
     await pool(due, CONCURRENCY, async (src) => {
       const prev = state.results[src.id];
       try {
-        const { items, ms, warn } = await fetchSource(src);
-        const baseline = !prev?.ok && !prev?.items?.length; // première lecture : rien n'est « nouveau »
+        const { items, skipped, ms, warn } = await fetchSource(src);
+        // Première lecture, ou relecture après un changement de mots-clés : rien n'est « nouveau ».
+        const baseline = prev?.rebase || (!prev?.ok && !prev?.items?.length);
         for (const it of items) {
           if (it.id in state.firstSeen) continue;
           state.firstSeen[it.id] = baseline ? 0 : Date.now();
           if (!baseline && !it.repo) fresh.push(it);
         }
         // La source a pu être supprimée ou retirée pendant le téléchargement.
-        if (SRC[src.id] && isActive(src)) state.results[src.id] = { items, at: Date.now(), ok: true, ms, error: warn };
+        if (SRC[src.id] && isActive(src)) state.results[src.id] = { items, skipped, at: Date.now(), ok: true, ms, error: warn };
       } catch (err) {
-        if (SRC[src.id] && isActive(src)) state.results[src.id] = { items: prev?.items || [], at: Date.now(), ok: false, ms: 0, error: err.message, blocked: !!err.blocked };
+        if (SRC[src.id] && isActive(src)) state.results[src.id] = { items: prev?.items || [], skipped: prev?.skipped || 0, at: Date.now(), ok: false, ms: 0, error: err.message, blocked: !!err.blocked };
       }
       state.pending.delete(src.id);
       scheduleRender();
@@ -1051,10 +1092,11 @@
       const text = await getText(url);
       const items = (kind === 'hn' ? parseHN(text) : parseFeed(text, url)).filter((it) => it.title && it.link);
       const re = keywordsRe(data.keywords);
-      const kept = re ? items.filter((it) => re.test(`${it.title} ${it.summary}`)) : items;
+      const pageKeep = pageFilter({ cat, kind }); // page perso filtrée : l'aperçu compte ce qui parle de ses mots-clés
+      const kept = items.filter((it) => (!re || re.test(`${it.title} ${it.summary}`)) && (!pageKeep || pageKeep(itemText(it))));
       const name = String(data.name || '').trim() || (kind === 'hn' ? `HN · ${query}` : feedTitle(text) || hostOf(url));
       const lang = data.lang === 'auto' ? (kind === 'hn' ? 'en' : guessLang(text, items)) : data.lang === 'fr' ? 'fr' : 'en';
-      state.draft = { kind, url, site, cat, lang, name: clip(name, 60), keywords: String(data.keywords || '').trim() };
+      state.draft = { kind, url, site, cat, lang, name: clip(name, 60), keywords: String(data.keywords || '').trim(), filtered: !!(re || pageKeep) };
       status.className = 'add-status ok';
       status.textContent = 'Source valide';
       preview.innerHTML = previewHTML(state.draft, items, kept, alternatives);
@@ -1247,12 +1289,35 @@
     return `<div class="chips">${chips.join('')}</div>`;
   }
 
+  /** Bandeau d'une page perso : ses mots-clés et ce que le filtre fait de ses sites. */
+  function pageKeywordsHTML(catId) {
+    const terms = splitQuery(pageQuery(catId));
+    if (!terms.length) {
+      return `<div class="kw-bar">${icon('search')}<span class="kw-status">Aucun mot-clé : la page affiche tout ce que publient ses sites.</span>
+        <button type="button" class="link" data-act="edit-page">Ajouter des mots-clés</button></div>`;
+    }
+    const sites = newsSources(catId).filter((s) => s.kind !== 'news');
+    const n = sites.length;
+    const parts = ['Presse : Google Actualités'];
+    if (n && pagesRaw.find((p) => p.id === catId)?.filter) {
+      const skipped = sites.reduce((sum, s) => sum + (state.results[s.id]?.skipped || 0), 0);
+      const s = skipped > 1 ? 's' : '';
+      parts.push(`${n > 1 ? `vos ${n} sites` : 'votre site'} : seulement les articles qui en parlent${skipped ? ` (${skipped} autre${s} masqué${s})` : ''}
+        <button type="button" class="link" data-act="page-filter" data-v="off">Tout afficher</button>`);
+    } else if (n) {
+      parts.push(`${n > 1 ? `vos ${n} sites affichent` : 'votre site affiche'} tous leurs articles
+        <button type="button" class="link" data-act="page-filter" data-v="on">Seulement ceux qui en parlent</button>`);
+    }
+    return `<div class="kw-bar">${icon('search')}<span class="kw-label">Mots-clés suivis</span>${terms.map((t) => `<span class="kw">${esc(t)}</span>`).join('')}
+      <span class="kw-status">${parts.join(' · ')}</span></div>`;
+  }
+
   function newsHTML(catId) {
     const srcs = newsSources(catId);
     const all = newsItems(catId);
     const items = filterItems(all);
     const shown = items.slice(0, limit);
-    return `${chipsHTML(catId, srcs, all)}
+    return `${CAT[catId]?.custom ? pageKeywordsHTML(catId) : ''}${chipsHTML(catId, srcs, all)}
       <div class="count-line"><span><b>${items.length}</b> article${items.length > 1 ? 's' : ''}${items.length !== all.length ? ` sur ${all.length}` : ''}</span></div>
       ${shown.length ? `<div class="grid ${state.view}">${shown.map(cardHTML).join('')}</div>${moreHTML(items.length - shown.length)}` : emptyHTML(srcs, all.length, catId)}`;
   }
@@ -1565,6 +1630,7 @@
     if (r?.at) sub.push(`interrogée ${ago(r.at)}`);
     if ((s.minAge ?? 30) >= 300) sub.push(`au plus toutes les ${Math.round(s.minAge / 60)} min`);
     if (s.include) sub.push(s.custom ? `filtre : ${s.keywords}` : 'filtrée par mots-clés');
+    if (pageFilter(s)) sub.push(`filtrée par les mots-clés de la page : ${pageQuery(s.cat)}`);
     if (s.exclude && s.kind !== 'github') sub.push('sujets « jeux » exclus');
     const cat = CAT[s.cat];
     const name = esc(s.name);
@@ -1676,7 +1742,7 @@
       ['Qu’est-ce qui est chargé depuis d’autres sites ?', 'Les images des articles (depuis leurs sites), les polices de caractères (Google Fonts) et, seulement si vous cliquez sur « Traduire », Google Traduction. Rien d’autre.'],
       ['Pourquoi un petit serveur ?', 'Les navigateurs interdisent à une page de lire directement les flux des autres sites. Le relais serveur.py les lit à sa place et garde une copie 20 secondes, sans rien enregistrer d’autre.'],
       ['Comment changer les sources ?', 'Page Sources : retirez une source du catalogue ou ajoutez la vôtre. Pour modifier le catalogue de tout le monde, éditez le fichier js/sources.js.'],
-      ['Puis-je suivre autre chose que la tech ?', 'Oui : menu → « Créer une page ». Partez d’un modèle (politique, F1, foot, voiture…) ou d’une page vide, choisissez son icône et sa couleur, puis suivez des mots-clés dans la presse (Google Actualités) ou ajoutez vos sites. La page reste dans votre navigateur.'],
+      ['Puis-je suivre autre chose que la tech ?', 'Oui : menu → « Créer une page ». Partez d’un modèle (politique, F1, foot, voiture…) ou d’une page vide, choisissez son icône et sa couleur, puis suivez des mots-clés dans la presse (Google Actualités) ou ajoutez vos sites. Par défaut, les sites de la page n’affichent que les articles qui parlent de vos mots-clés. La page reste dans votre navigateur.'],
     ];
     const files = [['js/app.js', 'l’application'], ['js/sources.js', 'le catalogue des sources'], ['css/style.css', 'le style'], ['serveur.py', 'le relais'], ['CHANGELOG.md', 'le journal des versions'], ['LICENSE', 'la licence']];
     const repo = safeUrl(PROJECT.repo || '');
@@ -1793,7 +1859,7 @@
 
   function previewHTML(d, items, kept, alternatives) {
     const latest = kept.slice(0, 3).map((it) => `<li>${esc(it.title)} <time>${ago(it.date)}</time></li>`).join('');
-    const count = `${items.length} article${items.length > 1 ? 's' : ''}${d.keywords ? ` · ${kept.length} après filtre` : ''}`;
+    const count = `${items.length} article${items.length > 1 ? 's' : ''}${d.filtered ? ` · ${kept.length} après filtre` : ''}`;
     return `<div class="preview">
       <div class="pv-h">${icon('check')}<b>${esc(d.name)}</b><span>${count} · ${esc(hostOf(d.url))} · ${d.lang.toUpperCase()}</span></div>
       ${latest ? `<ul>${latest}</ul>` : '<p class="pv-alt">Aucun article ne correspond pour le moment : la source sera surveillée.</p>'}
@@ -2042,6 +2108,9 @@
     const news = page && SOURCES.find((s) => s.cat === page.id && s.kind === 'news');
     const query = news?.query ?? theme?.query ?? '';
     const qlang = news?.lang ?? 'fr';
+    // Filtre des sites : actif par défaut ; pas pour un modèle qui fournit ses propres mots-clés,
+    // dont les médias sont déjà choisis pour le sujet (ses mots-clés servent à chercher dans la presse).
+    const strict = page ? page.filter : !theme?.query;
     const others = page ? SOURCES.filter((s) => s.cat === page.id && s.kind !== 'news') : [];
     const presets = isNew ? `<section class="pe-sec">
         <h3>${icon('star')}Partir d’un modèle</h3>
@@ -2073,10 +2142,12 @@
         <fieldset class="pe-colors"><legend>Couleur</legend>${PAGE_COLORS.map((c) => `<label class="pe-color" style="--sw:${c}"><input type="radio" name="color" value="${c}"${c === color ? ' checked' : ''} aria-label="Couleur ${c}"><span></span></label>`).join('')}
           <label class="pe-color pe-custom" style="--sw:${custom}" title="Autre couleur"><input type="radio" name="color" value="${custom}" class="pe-custom-radio"${PAGE_COLORS.includes(color) ? '' : ' checked'} aria-label="Autre couleur"><span>${icon('plus')}</span><input type="color" class="pe-picker" value="${custom}" tabindex="-1" aria-hidden="true"></label></fieldset>
         <section class="pe-sec">
-          <h3>${icon('search')}Mots-clés dans la presse <em>Google Actualités</em></h3>
-          <p class="pe-help">Les articles de presse qui parlent de ces mots, mis à jour en continu. Une virgule sépare deux recherches : « F1, Formule 1 ».${isNew && !theme ? ' Rempli avec le nom de la page, modifiable.' : ''}</p>
-          <div class="pe-row"><label class="field grow"><span class="sr-only">Mots-clés</span><input name="query" maxlength="300" value="${esc(query)}" placeholder="ex. jeunes politique, élections" data-auto="${isNew && !theme ? '1' : '0'}"></label>
+          <h3>${icon('search')}Mots-clés suivis <em>Google Actualités</em></h3>
+          <p class="pe-help">La page cherche ces mots dans la presse, en continu. Une virgule sépare deux mots-clés : « PSG, Mbappé ». Un mot-clé de plusieurs mots les veut tous : « voiture électrique ».${isNew && !theme ? ' Rempli avec le nom de la page, modifiable.' : ''}</p>
+          <div class="pe-row"><label class="field grow"><span class="sr-only">Mots-clés</span><input name="query" maxlength="300" value="${esc(query)}" placeholder="ex. PSG, Mbappé" data-auto="${isNew && !theme ? '1' : '0'}"></label>
             <select name="qlang" class="ctl" aria-label="Langue de la presse"><option value="fr"${qlang === 'fr' ? ' selected' : ''}>Presse française</option><option value="en"${qlang === 'en' ? ' selected' : ''}>Presse anglophone</option></select></div>
+          <label class="pe-check"><input type="checkbox" name="strict"${strict ? ' checked' : ''}>
+            <span><b>Les sites de la page aussi : seulement les articles qui parlent de ces mots-clés</b><small>Sans mot-clé, rien n’est filtré.</small></span></label>
         </section>
         ${recommended}${current}
         ${isNew ? `<p class="pe-note">${icon('info')}<span>Ensuite, ajoutez n’importe quel site ou flux RSS depuis la page, avec « Ajouter une source ». Tout reste dans ce navigateur.</span></p>` : ''}
@@ -2160,6 +2231,18 @@
     savePage(e.target);
   });
 
+  /** Les mots-clés ou le filtre d'une page ont changé : ses sites sont refiltrés tout de suite, puis relus
+   *  au prochain cycle (depuis le cache, sans tout retélécharger) pour retrouver ce qui correspond désormais. */
+  function refilterPage(catId) {
+    for (const s of SOURCES) {
+      const r = state.results[s.id];
+      if (s.cat !== catId || s.kind === 'news' || !r) continue;
+      const keep = pageFilter(s);
+      if (keep) r.items = r.items.filter((it) => keep(itemText(it)));
+      r.rebase = true;
+    }
+  }
+
   function savePage(form) {
     const data = new FormData(form);
     const label = String(data.get('label') || '').replace(/\s+/g, ' ').trim().slice(0, 30);
@@ -2172,16 +2255,18 @@
     const color = isColor(data.get('color')) ? String(data.get('color')).toLowerCase() : PAGE_COLORS[0];
     const query = splitQuery(data.get('query')).join(', ');
     const qlang = data.get('qlang') === 'en' ? 'en' : 'fr';
+    const strict = data.get('strict') === 'on';
     const created = !editing;
     let page = pagesRaw.find((p) => p.id === editing);
+    const filterChanged = !!page && page.filter !== strict;
     if (page) {
-      Object.assign(page, { label, icon: ic, color });
+      Object.assign(page, { label, icon: ic, color, filter: strict });
       Object.assign(CAT[page.id], { label, long: label, icon: ic, color });
     } else {
       const base = slugify(label);
       let id = base;
       for (let k = 2; RESERVED.has(id) || CAT[id]; k++) id = `${base.slice(0, 20)}-${k}`;
-      page = { id, label, icon: ic, color, createdAt: Date.now() };
+      page = { id, label, icon: ic, color, filter: strict, createdAt: Date.now() };
       pagesRaw.push(page);
       registerPage(page);
       const theme = THEMES.find((t) => t.id === form.dataset.theme);
@@ -2196,10 +2281,12 @@
     }
     // Mots-clés : la source Google Actualités de la page est créée, remplacée ou retirée.
     const news = SOURCES.find((s) => s.cat === page.id && s.kind === 'news');
+    const keywordsChanged = (news?.query || '') !== query;
     if (!news || news.query !== query || news.lang !== qlang) {
       if (news) removeSource(news.id);
       if (query) addSource(newsSourceRaw(page.id, query, qlang));
     }
+    if (keywordsChanged || filterChanged) refilterPage(page.id); // les sites de la page suivent les nouveaux mots-clés
     savePages();
     saveCustom();
     pruneSeen();
@@ -2509,6 +2596,17 @@
       case 'menu-close': closeMenu(); return;
       case 'new-page': closeMenu().then(() => openEditor()); return;
       case 'edit-page': openEditor(state.tab); return;
+      case 'page-filter': { // bandeau de la page : filtre des sites activé / coupé sans ouvrir l'éditeur
+        const page = pagesRaw.find((p) => p.id === state.tab);
+        if (!page) return;
+        page.filter = v === 'on';
+        savePages();
+        refilterPage(page.id);
+        persist();
+        renderBody();
+        refresh();
+        return;
+      }
       case 'pick-preset': openEditor(null, v); return;
       case 'close-editor': closeEditor(); return;
       case 'delete-page': deletePage(editing); return;

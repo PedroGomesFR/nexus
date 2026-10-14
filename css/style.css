@@ -637,7 +637,7 @@ html.menu-open, html.modal-open { overflow: hidden; }
 .pe-picker { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; opacity: 0; cursor: pointer; }
 
 .pe-srcs { display: grid; gap: 6px; }
-.pe-src {
+.pe-src, .pe-check {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
@@ -649,12 +649,35 @@ html.menu-open, html.modal-open { overflow: hidden; }
   cursor: pointer;
   transition: background .2s, opacity .2s;
 }
-.pe-src:hover { background: rgba(255, 255, 255, .05); }
+.pe-src:hover, .pe-check:hover { background: rgba(255, 255, 255, .05); }
 .pe-src:has(input:not(:checked)) { opacity: .5; }
-.pe-src input { width: 17px; height: 17px; accent-color: var(--c); }
-.pe-src > span { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.pe-src input, .pe-check input { width: 17px; height: 17px; accent-color: var(--c); }
+.pe-src > span, .pe-check > span { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .pe-src b { font-size: 14px; font-weight: 600; }
-.pe-src small { font: 11.5px var(--f-mono); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pe-src small, .pe-check small { font: 11.5px var(--f-mono); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Option « les sites de la page aussi » sous les mots-clés */
+.pe-check { grid-template-columns: auto minmax(0, 1fr); margin-top: 10px; }
+.pe-check b { font-size: 13.5px; font-weight: 600; line-height: 1.4; }
+
+/* Page perso : mots-clés suivis et filtre de ses sites */
+.kw-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 22px 0 0;
+  padding: 11px 14px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--c) 30%, transparent);
+  background: color-mix(in srgb, var(--c) 6%, transparent);
+  font-size: 13.5px;
+  color: var(--muted);
+}
+.kw-bar > svg { width: 16px; height: 16px; flex: none; color: var(--c); }
+.kw-label { font: 600 10.5px var(--f-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--c); }
+.kw { padding: 3px 10px; border-radius: 999px; font-weight: 600; color: var(--text); background: color-mix(in srgb, var(--c) 18%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 45%, transparent); }
+.kw-status { flex: 1 1 260px; line-height: 1.5; }
+.kw-bar .link { white-space: nowrap; }
 .pe-note {
   display: flex;
   align-items: flex-start;

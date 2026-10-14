@@ -9,6 +9,17 @@ le badge de version du README.
 
 > Les versions 1.3 à 1.8 ont été numérotées après coup, d'après l'historique Git.
 
+## [1.10] · 14 octobre 2026 · Les pages perso suivent leurs mots-clés
+
+### Nouveau
+- Bandeau en haut de chaque page perso : les mots-clés suivis, le nombre d'articles masqués et un bouton « Tout afficher » pour couper le filtre.
+- Option dans « Personnaliser » : filtrer ou non les sites de la page par ses mots-clés. Activée par défaut, y compris pour les pages existantes.
+
+### Amélioré
+- Pages perso : les sites de la page (médias du modèle, sites ajoutés) n'affichent plus que les articles qui parlent de vos mots-clés, en plus de la recherche Google Actualités.
+- Correspondance souple : sans accents ni majuscules, dans n'importe quel ordre, « jeune » trouve « jeunes » ; « PS » ne trouve pas « PSG ».
+- Nouveaux mots-clés appliqués tout de suite, sans faire passer les anciens articles pour des nouveautés.
+
 ## [1.9] · 14 octobre 2026 · Nouveautés et numéro de version
 
 ### Nouveau
