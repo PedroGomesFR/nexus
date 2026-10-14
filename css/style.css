@@ -741,6 +741,13 @@ h1 {
   background: color-mix(in srgb, var(--c) 22%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 55%, transparent), 0 0 18px -6px var(--c);
 }
+@media (max-width: 640px) {
+  .subnav { max-width: 100%; } /* trois onglets (Actualités · Projets GitHub · Jouer) tiennent même sur 360 px */
+  .subnav button { padding: 9px 10px; }
+}
+@media (max-width: 400px) {
+  .subnav button { padding: 9px 7px; letter-spacing: .04em; } /* … et sur 320 px */
+}
 
 .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 20px; }
 .search { position: relative; flex: 1 1 280px; max-width: 480px; }
@@ -786,6 +793,13 @@ h1 {
 .seg button svg { width: 16px; height: 16px; }
 .seg button:hover { color: var(--text); }
 .seg button.on { color: #fff; background: color-mix(in srgb, var(--c) 20%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 50%, transparent); }
+@media (max-width: 640px) {
+  /* Téléphone : boutons plus serrés ; si le sélecteur reste plus large que l'écran, il défile au doigt
+     au lieu d'élargir toute la page. */
+  .seg { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+  .seg::-webkit-scrollbar { display: none; }
+  .seg > button { flex: none; padding: 7px 9px; white-space: nowrap; }
+}
 
 /* Puces de sources */
 .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 22px 0 4px; }
@@ -850,7 +864,7 @@ h1 {
 }
 .card.repo { contain-intrinsic-size: auto 260px; }
 .grid.list .card { contain-intrinsic-size: auto 130px; }
-/* Fiches « Jouer » (Reverse Jeux) */
+/* Fiches « Jouer » (Reverse Jeux) et « Utiliser » (Reverse Apps) */
 .play-note {
   display: flex;
   align-items: flex-start;
@@ -1023,8 +1037,8 @@ h1 {
 .need { padding: 3px 9px; border-radius: 999px; border: 1px solid; font: 700 10.5px/1.4 var(--f-mono); letter-spacing: .08em; text-transform: uppercase; cursor: help; }
 .need-free { color: var(--lime); border-color: rgba(163, 255, 18, .4); background: rgba(163, 255, 18, .08); }
 .need-demo { color: var(--cyan); border-color: rgba(0, 229, 255, .4); background: rgba(0, 229, 255, .08); }
-.need-files { color: var(--amber); border-color: rgba(255, 176, 32, .4); background: rgba(255, 176, 32, .08); }
-.need-rom { color: #ff9fd2; border-color: rgba(255, 159, 210, .4); background: rgba(255, 159, 210, .08); }
+.need-files, .need-device { color: var(--amber); border-color: rgba(255, 176, 32, .4); background: rgba(255, 176, 32, .08); }
+.need-rom, .need-account { color: #ff9fd2; border-color: rgba(255, 159, 210, .4); background: rgba(255, 159, 210, .08); }
 .g-need { margin: 0; font-size: 13px; line-height: 1.55; color: var(--muted); }
 .g-need b { color: var(--text); font-weight: 600; }
 .g-need code, .howto code { font: 600 11.5px var(--f-mono); color: var(--text); background: rgba(255, 255, 255, .07); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }

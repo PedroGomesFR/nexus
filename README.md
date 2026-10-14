@@ -49,6 +49,7 @@ NEXUS rassemble tout sur une seule page :
 | 🏆 **Classement des IA** | Tous les modèles évalués par Artificial Analysis : index d'intelligence, de code et d'agents, prix d'entrée et de sortie, intelligence par dollar, contexte, taille (poids ouverts), date de sortie. Tri par colonne, filtres poids ouverts / propriétaires, capacités et créateur |
 | 🎮 **Projets GitHub** | Catalogue des décompilations de jeux et des apps / API rétro-ingéniérées, triés par étoiles ou par activité |
 | 🕹️ **Jouer** | 25 jeux rétro-ingéniérés : liens officiels pour jouer en ligne ou télécharger, ce qu'il faut fournir et comment les lancer |
+| 🚀 **Utiliser** | 23 apps rétro-ingéniérées (pilotes, firmwares, clients libres : Gadgetbridge, OpenRGB, Asahi Linux, Wine…) : liens officiels, ce qu'il faut, comment les installer, filtres par domaine et par plateforme |
 | 🗂️ **Pages perso** | Une page sur le sujet de votre choix, avec son icône et sa couleur : 13 modèles prêts à l'emploi (politique, F1, foot, voiture…) avec des médias vérifiés, des mots-clés suivis dans la presse via Google Actualités, et vos propres sites |
 | 🔖 **Favoris** | Conservés même quand l'article disparaît des flux |
 | ➕ **Sources perso** | Ajoutez un site (son flux RSS est trouvé automatiquement), un flux RSS/Atom ou une recherche Hacker News |
@@ -67,6 +68,9 @@ NEXUS rassemble tout sur une seule page :
   </tr>
   <tr>
     <td colspan="2"><img src="docs/jouer.jpg" alt="Jeux rétro-ingéniérés jouables, avec liens officiels et instructions"><br><sub><b>Reverse Jeux → Jouer</b> : Diablo, Zelda, Tomb Raider, OpenTTD… jouables en ligne ou à télécharger, avec la marche à suivre. Aucun jeu n'est hébergé : liens officiels uniquement.</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/utiliser.jpg" alt="Apps rétro-ingéniérées à installer, avec liens officiels et instructions"><br><sub><b>Reverse Apps → Utiliser</b> : Photopea, Ruffle, Tasmota, Gadgetbridge, OpenRGB, Asahi Linux… triées par domaine (appareils, services, systèmes, fichiers) et par plateforme, avec la marche à suivre.</sub></td>
   </tr>
   <tr>
     <td colspan="2"><img src="docs/pages-perso.jpg" alt="Création d'une page perso à partir du modèle Politique jeunes"><br><sub><b>Menu → Créer une page</b> : partez d'un modèle ou d'une page vide, choisissez l'icône et la couleur, suivez des mots-clés dans la presse et cochez les médias recommandés.</sub></td>
@@ -172,6 +176,7 @@ nexus/
 ├── js/sources.js   catalogue des rubriques et des sources
 ├── js/themes.js    modèles de pages perso (politique, F1, foot…)
 ├── js/games.js     jeux rétro-ingéniérés de la vue « Jouer »
+├── js/apps.js      apps rétro-ingéniérées de la vue « Utiliser »
 ├── js/app.js       l'application (JavaScript pur, sans framework)
 ├── serveur.py      le relais (bibliothèque standard Python)
 ├── lancer.bat      démarrage en un double-clic sous Windows

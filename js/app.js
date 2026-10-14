@@ -23,7 +23,7 @@
   const MENU_HINTS = { // sous-titres du menu
     radar: 'Vue d’ensemble en direct',
     ia: 'Intelligence artificielle',
-    apps: 'Apps et API rétro-ingéniérées',
+    apps: 'Apps et API · utiliser',
     jeux: 'Décompilations · jouer',
     info: 'Actualité informatique',
     cyber: 'Alertes et menaces',
@@ -34,14 +34,22 @@
   const PROJECTS_ABOUT = 'Dépôts GitHub publics : le code est vérifiable. Classés par étoiles ou par activité récente.';
   const PLAY_ABOUT = 'Les jeux rétro-ingéniérés auxquels vous pouvez jouer : en ligne, ou à télécharger depuis leur page officielle, avec la marche à suivre.';
   const GAMES = window.NEXUS_GAMES || [];
+  const USE_ABOUT = 'Les apps rétro-ingéniérées que vous pouvez utiliser : pilotes, firmwares et clients libres, avec leur page officielle et la marche à suivre.';
+  const APPS = window.NEXUS_APPS || [];
   const RANK_ABOUT = 'Les modèles d’IA classés par intelligence, code, agents, prix, contexte, taille ou date de sortie, à partir de données publiques mises à jour en continu.';
-  const SUBS = { news: '', rank: 'classement', projects: 'projets', play: 'jouer' }; // sous-onglets et leur suffixe d'adresse (#jeux/jouer)
+  const SUBS = { news: '', rank: 'classement', projects: 'projets', play: 'jouer', use: 'utiliser' }; // sous-onglets et leur suffixe d'adresse (#jeux/jouer)
   const NEEDS = {
     free: { label: 'Rien à fournir', hint: 'Fonctionne avec des données libres ou offertes.' },
     demo: { label: 'Démo gratuite', hint: 'Jouable avec une version de démonstration ou shareware gratuite ; le jeu complet demande vos fichiers.' },
     files: { label: 'Vos fichiers du jeu', hint: 'Demande votre copie du jeu original (GOG, Steam ou CD).' },
     rom: { label: 'Votre ROM', hint: 'Demande la ROM de votre propre copie du jeu.' },
   };
+  const APP_NEEDS = {
+    free: { label: 'Rien à fournir', hint: 'S’installe et fonctionne seule, gratuitement.' },
+    device: { label: 'Votre appareil', hint: 'Pilote ou libère un appareil que vous possédez (montre, routeur, Mac…).' },
+    account: { label: 'Votre abonnement', hint: 'Se connecte au service avec votre propre compte ou abonnement.' },
+  };
+  const DOMAINS = { device: 'Appareils', service: 'Services', system: 'Systèmes', file: 'Fichiers' }; // vue « Utiliser »
   const INTERVALS = [[30, 'Toutes les 30 s'], [60, 'Chaque minute'], [120, 'Toutes les 2 min'], [300, 'Toutes les 5 min'], [900, 'Toutes les 15 min']];
   const PERIODS = { all: 'Toutes dates', day: '24 h', week: '7 jours', month: '30 jours' };
   const PERIOD_MS = { all: Infinity, day: 864e5, week: 6048e5, month: 2592e6 };
@@ -416,6 +424,8 @@
     projSort: saved.projSort === 'recent' ? 'recent' : 'stars',
     favSort: saved.favSort === 'date' ? 'date' : 'added',
     playFilter: 'all', // vue « Jouer » : all | online | free | own
+    useFilter: 'all', // vue « Utiliser » : all | device | service | system | file
+    usePlat: 'all', // vue « Utiliser » : plateforme
     board: loadSavedBoard(), // classement des modèles d'IA
     boardSort: BOARD_SORTS[saved.boardSort] ? saved.boardSort : 'intel',
     boardDir: saved.boardDir === 'asc' ? 'asc' : saved.boardDir === 'desc' ? 'desc' : BOARD_SORTS[saved.boardSort]?.dir || 'desc',
@@ -1237,44 +1247,59 @@
       ${items.length ? `<div class="grid">${items.slice(0, limit).map(repoHTML).join('')}</div>${moreHTML(items.length - limit)}` : emptyHTML(srcs, all.length)}`;
   }
 
-  // ───────── Jouer : jeux rétro-ingéniérés (js/games.js) ─────────
+  // ───────── Jouer et Utiliser : jeux (js/games.js) et apps (js/apps.js) rétro-ingéniérés ─────────
   /** `texte` → <code>texte</code>, après échappement. */
   const richText = (s) => esc(s).replace(/`([^`]+)`/g, '<code>$1</code>');
+  /** 'propriétaire/projet' → GitHub ; une adresse complète (Codeberg, GitLab…) reste telle quelle. */
+  const repoUrl = (r) => (/^https?:\/\//.test(r) ? r : `https://github.com/${r}`);
+  const searchTokens = () => norm(state.q).split(/\s+/).filter(Boolean);
+  const matches = (tokens, text) => !tokens.length || tokens.every((t) => norm(text).includes(t));
 
-  function gameHTML(g, i) {
-    const need = NEEDS[g.needs] || NEEDS.files;
-    const repos = g.code || [];
+  /** Fiche commune aux deux catalogues : f.launch = lien utilisable dans le navigateur. */
+  function ficheHTML(f, i) {
+    const link = (url, cls, body, title = '') => `<a class="${cls}" href="${esc(safeUrl(url))}" target="_blank" rel="noopener noreferrer"${title ? ` title="${esc(title)}"` : ''}>${body}</a>`;
     const links = [];
-    if (g.play) links.push(`<a class="btn play" href="${esc(safeUrl(g.play))}" target="_blank" rel="noopener noreferrer">${icon('play')}Jouer en ligne</a>`);
-    if (g.download) links.push(`<a class="btn${g.play ? ' ghost' : ''}" href="${esc(safeUrl(g.download))}" target="_blank" rel="noopener noreferrer">${icon('download')}Télécharger</a>`);
-    repos.forEach((r, k) => links.push(`<a class="btn ghost" href="https://github.com/${esc(r)}" target="_blank" rel="noopener noreferrer" title="github.com/${esc(r)}">${icon('code')}${k === 0 ? 'Code source' : esc(r.split('/')[1])}</a>`));
-    if (g.site) links.push(`<a class="btn ghost" href="${esc(safeUrl(g.site))}" target="_blank" rel="noopener noreferrer">${icon('globe')}Site officiel</a>`);
-    return `<article class="card game" data-key="game-${esc(g.id)}" style="--h:${hue(g.game)};--c:${CAT.jeux.color};--i:${Math.min(i, 18)}">
+    if (f.launch) links.push(link(f.launch, 'btn play', `${icon('play')}${f.launchLabel}`));
+    if (f.download) links.push(link(f.download, `btn${f.launch ? ' ghost' : ''}`, `${icon('download')}Télécharger`));
+    (f.code || []).forEach((r, k) => {
+      const url = repoUrl(r);
+      links.push(link(url, 'btn ghost', `${icon('code')}${k === 0 ? 'Code source' : esc(url.split('/').pop())}`, url.replace(/^https?:\/\//, '')));
+    });
+    if (f.site) links.push(link(f.site, 'btn ghost', `${icon('globe')}Site officiel`));
+    return `<article class="card game" data-key="${esc(f.key)}" style="--h:${hue(f.title)};--c:${f.color};--i:${Math.min(i, 18)}">
       <div class="g-body">
         <div class="g-head">
-          <div><h3>${esc(g.game)}</h3><p class="g-orig">${esc(g.original)}</p></div>
-          ${g.play ? '<span class="tag-live" title="Jouable directement dans le navigateur">EN LIGNE</span>' : ''}
+          <div><h3>${esc(f.title)}</h3><p class="g-orig">${esc(f.original)}</p></div>
+          ${f.launch ? `<span class="tag-live" title="${f.liveHint}">EN LIGNE</span>` : ''}
         </div>
-        <p class="g-proj"><b>${esc(g.project)}</b> · ${esc(g.kind)}</p>
-        <p class="g-desc">${esc(g.desc)}</p>
-        <div class="g-meta"><span class="need need-${esc(g.needs)}" title="${esc(need.hint)}">${need.label}</span>${(g.platforms || []).map((p) => `<span class="plat">${esc(p)}</span>`).join('')}</div>
-        ${g.needsText ? `<p class="g-need"><b>Ce qu’il faut :</b> ${richText(g.needsText)}</p>` : ''}
+        <p class="g-proj"><b>${esc(f.label)}</b> · ${esc(f.kind)}</p>
+        <p class="g-desc">${esc(f.desc)}</p>
+        <div class="g-meta"><span class="need need-${esc(f.needs)}" title="${esc(f.need.hint)}">${f.need.label}</span>${(f.platforms || []).map((p) => `<span class="plat">${esc(p)}</span>`).join('')}</div>
+        ${f.needsText ? `<p class="g-need"><b>Ce qu’il faut :</b> ${richText(f.needsText)}</p>` : ''}
         <div class="g-actions">${links.join('')}</div>
-        ${g.warn ? `<p class="g-warn">${icon('alert')}${richText(g.warn)}</p>` : ''}
-        <details class="howto"><summary>Comment le lancer</summary><ol>${(g.steps || []).map((s) => `<li>${richText(s)}</li>`).join('')}</ol></details>
+        ${f.warn ? `<p class="g-warn">${icon('alert')}${richText(f.warn)}</p>` : ''}
+        <details class="howto"><summary>${f.howto}</summary><ol>${(f.steps || []).map((s) => `<li>${richText(s)}</li>`).join('')}</ol></details>
       </div>
     </article>`;
   }
 
+  const gameHTML = (g, i) => ficheHTML({
+    ...g, key: `game-${g.id}`, title: g.game, label: g.project, need: NEEDS[g.needs] || NEEDS.files, color: CAT.jeux.color,
+    launch: g.play, launchLabel: 'Jouer en ligne', liveHint: 'Jouable directement dans le navigateur', howto: 'Comment le lancer',
+  }, i);
+
+  const appHTML = (a, i) => ficheHTML({
+    ...a, key: `app-${a.id}`, title: a.name, label: DOMAINS[a.domain] || '', need: APP_NEEDS[a.needs] || APP_NEEDS.free, color: CAT.apps.color,
+    launch: a.open, launchLabel: 'Ouvrir en ligne', liveHint: 'Utilisable directement dans le navigateur', howto: 'Comment l’installer',
+  }, i);
+
   function playHTML() {
-    const tokens = norm(state.q).split(/\s+/).filter(Boolean);
+    const tokens = searchTokens();
     const list = GAMES.filter((g) => {
       if (state.playFilter === 'online' && !g.play) return false;
       if (state.playFilter === 'free' && !['free', 'demo'].includes(g.needs)) return false;
       if (state.playFilter === 'own' && !['files', 'rom'].includes(g.needs)) return false;
-      if (!tokens.length) return true;
-      const hay = norm(`${g.game} ${g.project} ${g.original} ${g.kind} ${g.desc} ${(g.platforms || []).join(' ')}`);
-      return tokens.every((t) => hay.includes(t));
+      return matches(tokens, `${g.game} ${g.project} ${g.original} ${g.kind} ${g.desc} ${(g.platforms || []).join(' ')}`);
     });
     const online = GAMES.filter((g) => g.play).length;
     const free = GAMES.filter((g) => ['free', 'demo'].includes(g.needs)).length;
@@ -1284,6 +1309,31 @@
     return `${note}
       <div class="count-line"><span><b>${list.length}</b> jeu${list.length > 1 ? 'x' : ''}${list.length !== GAMES.length ? ` sur ${GAMES.length}` : ''} · ${online} jouables en ligne · ${free} gratuits</span></div>
       ${list.length ? `<div class="grid games">${list.map(gameHTML).join('')}</div>` : `<div class="empty">${icon('filter')}<b>Aucun jeu</b><p>Aucun jeu ne correspond à ces filtres.</p></div>`}`;
+  }
+
+  /** Plateformes du catalogue d'apps, de la plus courante à la plus rare. */
+  function appPlatforms() {
+    const counts = new Map();
+    for (const a of APPS) for (const p of a.platforms || []) counts.set(p, (counts.get(p) || 0) + 1);
+    return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'fr'));
+  }
+
+  function useHTML() {
+    const tokens = searchTokens();
+    const list = APPS.filter((a) => {
+      if (state.useFilter !== 'all' && a.domain !== state.useFilter) return false;
+      if (state.usePlat !== 'all' && !(a.platforms || []).includes(state.usePlat)) return false;
+      return matches(tokens, `${a.name} ${a.original} ${a.kind} ${a.desc} ${DOMAINS[a.domain] || ''} ${(a.platforms || []).join(' ')}`);
+    });
+    const online = APPS.filter((a) => a.open).length;
+    const free = APPS.filter((a) => a.needs === 'free').length;
+    const note = `<div class="play-note">${icon('info')}<p><b>Aucune app n’est hébergée ici.</b> Ces projets font fonctionner un appareil, un service ou un format fermé
+      en réimplémentant son protocole : une rétro-ingénierie que le droit européen autorise, sous conditions, quand elle sert l’interopérabilité (directive 2009/24/CE, art. 6).
+      Les liens mènent uniquement aux pages officielles. Les clients non officiels (YouTube, Google Play) peuvent aller contre les conditions d’utilisation de ces services,
+      et rooter ou reflasher un appareil peut faire perdre sa garantie.</p></div>`;
+    return `${note}
+      <div class="count-line"><span><b>${list.length}</b> app${list.length > 1 ? 's' : ''}${list.length !== APPS.length ? ` sur ${APPS.length}` : ''} · ${online} utilisables en ligne · ${free} sans rien à fournir</span></div>
+      ${list.length ? `<div class="grid games">${list.map(appHTML).join('')}</div>` : `<div class="empty">${icon('filter')}<b>Aucune app</b><p>Aucune app ne correspond à ces filtres.</p></div>`}`;
   }
 
   // ───────── Classement des modèles d'IA : chargement et affichage ─────────
@@ -1544,7 +1594,7 @@
     const features = [
       'L’actualité IA, informatique et cybersécurité, en français et en anglais',
       'Le classement des modèles d’IA : intelligence, code, agents, prix, contexte, taille, date de sortie',
-      'Les apps et jeux rétro-ingéniérés : articles et catalogue des projets GitHub',
+      'Les apps et jeux rétro-ingéniérés : articles, projets GitHub, jeux jouables et apps à installer, avec la marche à suivre',
       'Un rafraîchissement automatique, jusqu’à toutes les 30 secondes',
       'La recherche et des filtres par langue, date et type de source',
       'Des favoris conservés même quand l’article disparaît des flux',
@@ -1610,11 +1660,11 @@
     </div>`;
 
   function toolbarHTML() {
+    const select = (act, label, options, current) => `<select class="ctl" data-act="${act}" aria-label="${label}">${options.map(([v, l]) => `<option value="${esc(v)}"${v === current ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
     if (state.sub === 'rank') {
       const counts = new Map();
       for (const r of state.board.rows) counts.set(r.creator, (counts.get(r.creator) || 0) + 1);
       const creators = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'fr'));
-      const select = (act, label, options, current) => `<select class="ctl" data-act="${act}" aria-label="${label}">${options.map(([v, l]) => `<option value="${esc(v)}"${v === current ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
       return `<div class="toolbar">${searchHTML('Rechercher un modèle, un créateur…')}
         ${select('boardSort', 'Trier par', Object.entries(BOARD_SORTS).map(([k, s]) => [k, `Trier : ${s.label}`]), state.boardSort)}
         <button type="button" class="btn ghost b-dir" data-act="bdir" title="Inverser l’ordre">${dirLabel()}</button>
@@ -1626,6 +1676,11 @@
     if (state.sub === 'play') {
       return `<div class="toolbar">${searchHTML('Rechercher un jeu, une console…')}
         ${seg('playf', state.playFilter, [['all', 'Tous'], ['online', `${icon('play')}Jouables en ligne`], ['free', 'Gratuits'], ['own', 'Avec votre copie']])}</div>`;
+    }
+    if (state.sub === 'use') {
+      return `<div class="toolbar">${searchHTML('Rechercher une app, un appareil, une marque…')}
+        ${seg('usef', state.useFilter, [['all', 'Tous'], ...Object.entries(DOMAINS)])}
+        ${select('usePlat', 'Plateforme', [['all', 'Toutes les plateformes'], ...appPlatforms().map(([p, n]) => [p, `${p} (${n})`])], state.usePlat)}</div>`;
     }
     const search = searchHTML('Rechercher dans cette rubrique…');
     if (state.sub === 'projects') {
@@ -1702,7 +1757,7 @@
     const t = TAB[state.tab];
     const cat = CAT[state.tab];
     document.documentElement.style.setProperty('--c', t.color);
-    const about = { projects: PROJECTS_ABOUT, play: PLAY_ABOUT, rank: RANK_ABOUT }[state.sub]
+    const about = { projects: PROJECTS_ABOUT, play: PLAY_ABOUT, use: USE_ABOUT, rank: RANK_ABOUT }[state.sub]
       || (cat?.custom ? 'Votre page perso, enregistrée dans ce navigateur. Ses sources apparaissent ci-dessous ; « Personnaliser » change son nom, son icône, sa couleur et ses mots-clés.' : t.about);
     const edit = cat?.custom ? `<button type="button" class="btn ghost v-edit" data-act="edit-page">${icon('edit')}Personnaliser</button>` : '';
     let html = `<div class="v-title"><span class="ico">${icon(t.icon)}</span><div><h1>${esc(t.long)}</h1><p class="v-sub">${esc(about)}</p></div>${edit}</div>`;
@@ -1711,6 +1766,7 @@
       if (cat.board) subs.push(['rank', `${icon('trophy')}Classement`]);
       if (cat.projects) subs.push(['projects', 'Projets GitHub']);
       if (state.tab === 'jeux') subs.push(['play', `${icon('play')}Jouer`]);
+      if (state.tab === 'apps') subs.push(['use', `${icon('rocket')}Utiliser`]);
       html += `<div class="subnav" role="tablist">${subs.map(([v, label]) => `<button data-act="sub" data-v="${v}" class="${state.sub === v ? 'on' : ''}" role="tab" aria-selected="${state.sub === v}">${label}</button>`).join('')}</div>`;
     }
     if (cat) html += toolbarHTML();
@@ -1795,6 +1851,7 @@
     else if (state.tab === 'apropos') html = aboutHTML();
     else if (state.sub === 'projects') html = projectsHTML(state.tab);
     else if (state.sub === 'play') html = playHTML();
+    else if (state.sub === 'use') html = useHTML();
     else if (state.sub === 'rank') html = boardHTML();
     else html = newsHTML(state.tab);
     if (state.tab === 'radar') updateTicker();
@@ -2335,6 +2392,7 @@
     state.sub = 'news';
     if (sub === 'projets' && CAT[state.tab]?.projects) state.sub = 'projects';
     if (sub === 'jouer' && state.tab === 'jeux') state.sub = 'play';
+    if (sub === 'utiliser' && state.tab === 'apps') state.sub = 'use';
     if (sub === 'classement' && CAT[state.tab]?.board) state.sub = 'rank';
   }
 
@@ -2388,6 +2446,7 @@
         setTimeout(() => { location.hash = SUBS[v] ? `${state.tab}/${SUBS[v]}` : state.tab; }, reduceMotion.matches ? 0 : 170);
         return;
       case 'playf': state.playFilter = v; markSeg(); break;
+      case 'usef': state.useFilter = v; markSeg(); break;
       case 'bweights': state.boardWeights = v; markSeg(); break;
       case 'bsort': { // en-tête de colonne : même colonne → ordre inversé
         if (state.boardSort === v) state.boardDir = state.boardDir === 'asc' ? 'desc' : 'asc';
