@@ -12,6 +12,7 @@ Et vos propres pages sur n'importe quel sujet : F1, foot, politique…
 
 <br>
 
+[![Version 1.9](https://img.shields.io/badge/version-1.9-f9a8d4?style=for-the-badge)](CHANGELOG.md)
 ![Licence MIT](https://img.shields.io/badge/licence-MIT-00e5ff?style=for-the-badge)
 ![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-ff2bd6?style=for-the-badge&logo=python&logoColor=white)
 ![Zéro dépendance](https://img.shields.io/badge/d%C3%A9pendances-0-a3ff12?style=for-the-badge)
@@ -56,6 +57,7 @@ NEXUS rassemble tout sur une seule page :
 | 🧹 **Catalogue à la carte** | Retirez les sources qui ne vous intéressent pas, rétablissez-les en un clic |
 | 🌐 **Traduction** | Un clic pour lire un article anglais traduit en français |
 | 💾 **Sauvegarde** | Export / import JSON de vos favoris et réglages pour changer d'appareil |
+| 🎁 **Nouveautés** | Ce qui a changé, version par version. Une nouvelle version est annoncée à la visite suivante (notification et pastille dans le menu). Historique complet dans [CHANGELOG.md](CHANGELOG.md) |
 | ✨ **Interface** | Thème néon, menu hamburger, transitions animées, adapté au mobile, raccourcis clavier |
 
 <table>
@@ -74,6 +76,9 @@ NEXUS rassemble tout sur une seule page :
   </tr>
   <tr>
     <td colspan="2"><img src="docs/pages-perso.jpg" alt="Création d'une page perso à partir du modèle Politique jeunes"><br><sub><b>Menu → Créer une page</b> : partez d'un modèle ou d'une page vide, choisissez l'icône et la couleur, suivez des mots-clés dans la presse et cochez les médias recommandés.</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/nouveautes.jpg" alt="Page Nouveautés : historique des versions, avec les versions pas encore vues signalées"><br><sub><b>Menu → Nouveautés</b> : la version en ligne et l'historique des versions. Celles sorties depuis votre dernière visite sont signalées.</sub></td>
   </tr>
 </table>
 
@@ -153,6 +158,14 @@ Ces choix sont enregistrés dans votre navigateur. Pour les transférer, utilise
 | `include` / `exclude` | Expression régulière pour filtrer les articles par mots-clés |
 | `minAge` | Délai minimal entre deux requêtes, en secondes (30 par défaut) |
 
+**Publier une version.** La version en ligne est la première entrée de [`js/changelog.js`](js/changelog.js) :
+c'est elle qu'affichent le menu, le pied de page, « À propos » et la page **Nouveautés**. Pour en publier une :
+
+1. ajoutez une entrée **en haut** de `js/changelog.js` (numéro, date, titre, changements `new` / `better` / `fix`) ;
+2. reportez-la dans [`CHANGELOG.md`](CHANGELOG.md) et mettez à jour le badge de version de ce README.
+
+À leur visite suivante, les visiteurs voient une notification et une pastille sur **Nouveautés**, une seule fois par version.
+
 ## Comment ça marche
 
 ```mermaid
@@ -177,8 +190,10 @@ nexus/
 ├── js/themes.js    modèles de pages perso (politique, F1, foot…)
 ├── js/games.js     jeux rétro-ingéniérés de la vue « Jouer »
 ├── js/apps.js      apps rétro-ingéniérées de la vue « Utiliser »
+├── js/changelog.js historique des versions (page « Nouveautés »)
 ├── js/app.js       l'application (JavaScript pur, sans framework)
 ├── serveur.py      le relais (bibliothèque standard Python)
+├── CHANGELOG.md    journal des versions
 ├── lancer.bat      démarrage en un double-clic sous Windows
 ├── render.yaml     configuration de déploiement Render
 └── docs/           logo et captures d'écran

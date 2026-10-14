@@ -16,7 +16,8 @@
 window.NEXUS = (() => {
   // Informations affichées dans l'onglet « À propos ».
   // repo : adresse du dépôt GitHub une fois créé (ex. 'https://github.com/vous/nexus-veille'), vide sinon.
-  const PROJECT = { version: '1.2', license: 'MIT', repo: 'https://github.com/PedroGomesFR/nexus' };
+  // Le numéro de version est celui de la première entrée de js/changelog.js.
+  const PROJECT = { license: 'MIT', repo: 'https://github.com/PedroGomesFR/nexus' };
 
   const TYPES = {
     officiel: { label: 'Officiel', hint: "Publié directement par l'organisation concernée : laboratoire, éditeur, agence d'État." },

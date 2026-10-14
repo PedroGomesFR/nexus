@@ -12,12 +12,15 @@
   const { PROJECT = {}, TYPES, CATEGORIES, SOURCES, BOARD = null } = window.NEXUS;
   const SRC = Object.fromEntries(SOURCES.map((s) => [s.id, s]));
   const CAT = Object.fromEntries(CATEGORIES.map((c) => [c.id, c]));
+  const CHANGELOG = window.NEXUS_CHANGELOG || []; // historique des versions (js/changelog.js), la plus récente d'abord
+  const VERSION = CHANGELOG[0]?.version || '';
   const TABS = [
     { id: 'radar', label: 'Radar', long: 'Radar', icon: 'radar', color: '#00e5ff', about: 'Les derniers titres de chaque rubrique, en un coup d’œil.' },
     ...CATEGORIES,
     { id: 'favoris', label: 'Favoris', long: 'Favoris', icon: 'bookmark', color: '#ffd34d', about: 'Vos articles et projets enregistrés. Ils restent ici même quand ils disparaissent des flux.' },
     { id: 'sources', label: 'Sources', long: 'Sources & fiabilité', icon: 'list', color: '#a5b4fc', about: 'D’où vient chaque information, son niveau de fiabilité et son état en direct. Retirez celles qui ne vous intéressent pas, ajoutez les vôtres.' },
     { id: 'apropos', label: 'À propos', long: 'À propos', icon: 'info', color: '#5eead4', about: 'Pourquoi NEXUS existe, comment il fonctionne et ce qu’il fait (et ne fait pas) de vos données.' },
+    { id: 'nouveautes', label: 'Nouveautés', long: 'Nouveautés', icon: 'gift', color: '#f9a8d4', about: 'Ce qui a changé sur NEXUS, version par version. Les versions sorties depuis votre dernière visite sont signalées.' },
   ];
   const TAB = Object.fromEntries(TABS.map((t) => [t.id, t]));
   const MENU_HINTS = { // sous-titres du menu
@@ -30,6 +33,7 @@
     favoris: 'Vos articles enregistrés',
     sources: 'Fiabilité · sources perso',
     apropos: 'Sans compte, gratuit, open source',
+    nouveautes: `Version ${VERSION} · ce qui a changé`,
   };
   const PROJECTS_ABOUT = 'Dépôts GitHub publics : le code est vérifiable. Classés par étoiles ou par activité récente.';
   const PLAY_ABOUT = 'Les jeux rétro-ingéniérés auxquels vous pouvez jouer : en ligne, ou à télécharger depuis leur page officielle, avec la marche à suivre.';
@@ -61,6 +65,7 @@
   const PAGES_KEY = 'nexus.pages'; // pages perso (F1, Foot, Politique…)
   const BOARD_KEY = 'nexus.board'; // dernier classement des modèles d'IA reçu
   const SIZES_KEY = 'nexus.sizes'; // nombre de paramètres des modèles à poids ouverts (ne change pas)
+  const SEEN_KEY = 'nexus.seen'; // dernière version vue dans « Nouveautés » et dernière version annoncée
   const THEMES = window.NEXUS_THEMES || []; // modèles de pages (js/themes.js)
   const PAGE_ICONS = ['news', 'landmark', 'vote', 'users', 'car', 'flag', 'ball', 'trophy', 'dumbbell', 'chart', 'briefcase', 'film', 'music', 'games', 'rocket', 'leaf', 'heart', 'book', 'globe', 'star', 'ai', 'chip', 'shield', 'chat'];
   const PAGE_COLORS = ['#00e5ff', '#4d8dff', '#8b5cf6', '#ff2bd6', '#ff4d6d', '#f97316', '#ffb020', '#ffd34d', '#a3ff12', '#5eead4'];
@@ -410,6 +415,25 @@
   const saved = readJSON(STORE_KEY, {}) || {};
   let favs = readJSON(FAVS_KEY, {});
   if (!favs || typeof favs !== 'object' || Array.isArray(favs)) favs = {};
+
+  // Versions : `version` = dernière version vue dans « Nouveautés », `told` = dernière version annoncée.
+  // Première visite : rien à annoncer. Visiteur d'avant la page Nouveautés : seule la dernière version est nouvelle.
+  const seen = (() => {
+    const s = readJSON(SEEN_KEY, null);
+    if (typeof s?.version === 'string') return { version: s.version, told: typeof s.told === 'string' ? s.told : s.version };
+    const first = !Object.keys(saved).length && !Object.keys(favs).length;
+    return first ? { version: VERSION, told: VERSION } : { version: CHANGELOG[1]?.version || '', told: '' };
+  })();
+  writeJSON(SEEN_KEY, seen);
+  /** Nombre de versions sorties depuis la dernière visite de « Nouveautés ». */
+  function freshVersions() {
+    const i = CHANGELOG.findIndex((r) => r.version === seen.version);
+    return i < 0 ? Math.min(1, CHANGELOG.length) : i;
+  }
+  function markSeen() {
+    Object.assign(seen, { version: VERSION, told: VERSION });
+    writeJSON(SEEN_KEY, seen);
+  }
 
   const state = {
     relay: false,
@@ -1580,6 +1604,47 @@
     return note + mine + legend + bar + groups;
   }
 
+  // ───────── Nouveautés : historique des versions (js/changelog.js) ─────────
+  const CHANGE_TYPES = { new: 'Nouveau', better: 'Amélioré', fix: 'Corrigé' };
+  const longDate = (d) => new Date(`${d}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+  let clFresh = 0; // versions encore jamais vues à l'ouverture de la page : elles restent signalées tant qu'on y est
+
+  function releaseHTML(r, i) {
+    const fresh = i < clFresh;
+    return `<li class="cl-rel${fresh ? ' fresh' : ''}" data-key="v${esc(r.version)}" style="--i:${Math.min(i, 12)}">
+      <article class="cl-card">
+        <header class="cl-head">
+          <span class="cl-ver">v${esc(r.version)}</span>
+          <h3>${esc(r.title)}</h3>
+          <time datetime="${esc(r.date)}">${longDate(r.date)}</time>
+          ${i === 0 ? '<span class="cl-tag cl-now">En ligne</span>' : ''}${fresh ? '<span class="cl-tag cl-fresh">Nouveau pour vous</span>' : ''}
+        </header>
+        <ul class="cl-changes">${(r.changes || []).map(([type, text]) => `<li><span class="cl-type t-${esc(type)}">${CHANGE_TYPES[type] || ''}</span><span>${esc(text)}</span></li>`).join('')}</ul>
+      </article>
+    </li>`;
+  }
+
+  function changelogHTML() {
+    if (!CHANGELOG.length) return `<div class="empty">${icon('gift')}<b>Aucune version</b><p>L’historique des versions (js/changelog.js) est introuvable.</p></div>`;
+    const [now] = CHANGELOG;
+    const first = CHANGELOG[CHANGELOG.length - 1];
+    const changes = CHANGELOG.reduce((n, r) => n + (r.changes || []).length, 0);
+    const repo = safeUrl(PROJECT.repo || '');
+    const s = clFresh > 1 ? 's' : '';
+    const status = clFresh
+      ? `<b>${clFresh} nouvelle${s} version${s}</b> depuis votre dernière visite, signalée${s} ci-dessous.`
+      : 'Vous êtes à jour : vous avez déjà vu toutes les nouveautés.';
+    return `<section class="cl-hero">
+        <p class="kicker">// version en ligne</p>
+        <h2>NEXUS <span>v${esc(now.version)}</span></h2>
+        <p class="cl-meta">${longDate(now.date)} · ${esc(now.title)}</p>
+        <p class="cl-status">${icon(clFresh ? 'gift' : 'check')}<span>${status}</span></p>
+        ${repo ? `<a class="btn ghost" href="${esc(repo)}/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">${icon('code')}CHANGELOG.md sur GitHub</a>` : ''}
+      </section>
+      <div class="count-line"><span><b>${CHANGELOG.length}</b> versions · ${changes} changements depuis le ${longDate(first.date)}</span></div>
+      <ol class="cl-list">${CHANGELOG.map(releaseHTML).join('')}</ol>`;
+  }
+
   function aboutHTML() {
     const catalog = SOURCES.filter((s) => !s.custom);
     const solid = catalog.filter((s) => ['officiel', 'presse', 'recherche'].includes(s.type)).length;
@@ -1603,6 +1668,7 @@
       'Le retrait des sources du catalogue qui ne vous intéressent pas',
       'La traduction en un clic des articles en anglais',
       'L’export et l’import de vos réglages pour changer d’appareil',
+      'Les nouveautés de chaque version, signalées quand une nouvelle version sort',
     ];
     const faq = [
       ['Pourquoi n’y a-t-il pas de compte ?', 'Parce qu’il n’en faut pas : tout ce qui vous est propre (favoris, sources, réglages) reste dans votre navigateur. Pour le retrouver ailleurs, utilisez « Exporter » puis « Importer ».'],
@@ -1612,7 +1678,7 @@
       ['Comment changer les sources ?', 'Page Sources : retirez une source du catalogue ou ajoutez la vôtre. Pour modifier le catalogue de tout le monde, éditez le fichier js/sources.js.'],
       ['Puis-je suivre autre chose que la tech ?', 'Oui : menu → « Créer une page ». Partez d’un modèle (politique, F1, foot, voiture…) ou d’une page vide, choisissez son icône et sa couleur, puis suivez des mots-clés dans la presse (Google Actualités) ou ajoutez vos sites. La page reste dans votre navigateur.'],
     ];
-    const files = [['js/app.js', 'l’application'], ['js/sources.js', 'le catalogue des sources'], ['css/style.css', 'le style'], ['serveur.py', 'le relais'], ['LICENSE', 'la licence']];
+    const files = [['js/app.js', 'l’application'], ['js/sources.js', 'le catalogue des sources'], ['css/style.css', 'le style'], ['serveur.py', 'le relais'], ['CHANGELOG.md', 'le journal des versions'], ['LICENSE', 'la licence']];
     const repo = safeUrl(PROJECT.repo || '');
     return `<div class="about">
       <section class="about-hero">
@@ -1645,7 +1711,7 @@
         <p>NEXUS est écrit en HTML, CSS et JavaScript, sans framework, avec un relais Python sans dépendance. Il est publié sous licence ${license} : vous pouvez le réutiliser librement, y compris pour héberger votre propre version. Le code exécuté par cette page est lisible ici :</p>
         <div class="code-links">${files.map(([file, what]) => `<a href="${file}" target="_blank" rel="noopener"><code>${file}</code><span>${what}</span></a>`).join('')}${repo ? `<a href="${esc(repo)}" target="_blank" rel="noopener noreferrer"><code>GitHub</code><span>le dépôt du projet</span></a>` : ''}</div>
       </section>
-      <p class="about-foot">NEXUS ${esc(PROJECT.version || '')} · ${activeSources().length} sources actives · aucune donnée personnelle collectée</p>
+      <p class="about-foot">NEXUS <a href="#nouveautes" title="Nouveautés de cette version">v${esc(VERSION)}</a> · ${activeSources().length} sources actives · aucune donnée personnelle collectée</p>
     </div>`;
   }
 
@@ -1849,6 +1915,10 @@
     else if (state.tab === 'sources') html = sourcesHTML();
     else if (state.tab === 'favoris') html = favoritesHTML();
     else if (state.tab === 'apropos') html = aboutHTML();
+    else if (state.tab === 'nouveautes') {
+      if (enter) { clFresh = freshVersions(); markSeen(); } // signalées pendant la visite, vues ensuite
+      html = changelogHTML();
+    }
     else if (state.sub === 'projects') html = projectsHTML(state.tab);
     else if (state.sub === 'play') html = playHTML();
     else if (state.sub === 'use') html = useHTML();
@@ -1906,8 +1976,8 @@
           <span class="ni-ico">${icon('plus')}</span>
           <span class="ni-text"><span class="ni-label">Créer une page</span><span class="ni-hint">${pages.length ? 'Un autre sujet à suivre' : 'F1, foot, politique… le sujet de votre choix'}</span></span>
         </button>`
-      + group('NEXUS') + TABS.filter((t) => ['favoris', 'sources', 'apropos'].includes(t.id)).map(item).join('');
-    $('#menu-meta').textContent = `// ${TABS.length} pages`;
+      + group('Et aussi') + TABS.filter((t) => ['favoris', 'sources', 'apropos', 'nouveautes'].includes(t.id)).map(item).join('');
+    $('#menu-meta').innerHTML = `// ${VERSION ? `<a href="#nouveautes" title="Nouveautés de la version ${esc(VERSION)}">v${esc(VERSION)}</a> · ` : ''}${TABS.length} pages`;
     updateChrome();
   }
 
@@ -2270,8 +2340,9 @@
       if (selected) el.setAttribute('aria-current', 'page');
       else el.removeAttribute('aria-current');
       const isFavTab = id === 'favoris';
-      const n = isFavTab ? Object.keys(state.favs).length : CAT[id] && !selected ? unseen(id) : 0;
-      if (!isFavTab) total += n;
+      const isNews = id === 'nouveautes'; // versions sorties depuis la dernière visite, pas des articles
+      const n = isFavTab ? Object.keys(state.favs).length : isNews ? freshVersions() : CAT[id] && !selected ? unseen(id) : 0;
+      if (!isFavTab && !isNews) total += n;
       const badge = el.querySelector('.badge');
       badge.hidden = !n;
       badge.classList.toggle('soft', isFavTab);
@@ -2650,6 +2721,13 @@
     setupControls();
     placeControls();
     go(true); // affiche tout de suite le dernier état connu
+    $('#version').textContent = VERSION ? `v${VERSION}` : '';
+    if (seen.told !== VERSION && freshVersions()) { // nouvelle version depuis la dernière visite : annoncée une seule fois
+      Object.assign(seen, { told: VERSION });
+      writeJSON(SEEN_KEY, seen);
+      const latest = CHANGELOG[0];
+      setTimeout(() => toast(`Nouvelle version : NEXUS ${latest.version}`, `${latest.title}. Cliquez pour voir les nouveautés.`, () => { location.hash = 'nouveautes'; }), 1500);
+    }
     // Les repères des sélecteurs suivent la mise en page : redimensionnement, polices chargées.
     let resizeTimer = 0;
     window.addEventListener('resize', () => {
