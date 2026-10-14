@@ -20,6 +20,17 @@
     { id: 'apropos', label: 'À propos', long: 'À propos', icon: 'info', color: '#5eead4', about: 'Pourquoi NEXUS existe, comment il fonctionne et ce qu’il fait (et ne fait pas) de vos données.' },
   ];
   const TAB = Object.fromEntries(TABS.map((t) => [t.id, t]));
+  const MENU_HINTS = { // sous-titres du menu
+    radar: 'Vue d’ensemble en direct',
+    ia: 'Intelligence artificielle',
+    apps: 'Apps et API rétro-ingéniérées',
+    jeux: 'Décompilations · jouer',
+    info: 'Actualité informatique',
+    cyber: 'Alertes et menaces',
+    favoris: 'Vos articles enregistrés',
+    sources: 'Fiabilité · sources perso',
+    apropos: 'Sans compte, gratuit, open source',
+  };
   const PROJECTS_ABOUT = 'Dépôts GitHub publics : le code est vérifiable. Classés par étoiles ou par activité récente.';
   const PLAY_ABOUT = 'Les jeux rétro-ingéniérés auxquels vous pouvez jouer : en ligne, ou à télécharger depuis leur page officielle, avec la marche à suivre.';
   const GAMES = window.NEXUS_GAMES || [];
@@ -1144,7 +1155,7 @@
       ['NEXUS écrit-il les articles ?', 'Non. Comme un lecteur RSS, il affiche le titre, un court extrait et le lien de chaque article. Le contenu appartient à ses auteurs : cliquez pour le lire sur le site d’origine.'],
       ['Qu’est-ce qui est chargé depuis d’autres sites ?', 'Les images des articles (depuis leurs sites), les polices de caractères (Google Fonts) et, seulement si vous cliquez sur « Traduire », Google Traduction. Rien d’autre.'],
       ['Pourquoi un petit serveur ?', 'Les navigateurs interdisent à une page de lire directement les flux des autres sites. Le relais serveur.py les lit à sa place et garde une copie 20 secondes, sans rien enregistrer d’autre.'],
-      ['Comment changer les sources ?', 'Onglet Sources : retirez une source du catalogue ou ajoutez la vôtre. Pour modifier le catalogue de tout le monde, éditez le fichier js/sources.js.'],
+      ['Comment changer les sources ?', 'Page Sources : retirez une source du catalogue ou ajoutez la vôtre. Pour modifier le catalogue de tout le monde, éditez le fichier js/sources.js.'],
     ];
     const files = [['js/app.js', 'l’application'], ['js/sources.js', 'le catalogue des sources'], ['css/style.css', 'le style'], ['serveur.py', 'le relais'], ['LICENSE', 'la licence']];
     const repo = safeUrl(PROJECT.repo || '');
@@ -1327,27 +1338,73 @@
     }, 300);
   }
 
-  function buildTabs() {
-    $('#tabs').innerHTML = TABS.map((t, i) => `<a class="tab" href="#${t.id}" role="tab" data-tab="${t.id}" style="--tc:${t.color};--n:${i}" title="${esc(t.long)} (touche ${i + 1})">${icon(t.icon)}<span>${esc(t.label)}</span><b class="badge" hidden></b></a>`).join('')
-      + '<span class="tab-ind" aria-hidden="true"></span>';
-  }
-
-  // ───────── Transitions ─────────
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
-  /** Trait lumineux qui glisse sous l'onglet actif. */
-  function moveIndicator() {
-    const nav = $('#tabs');
-    const tab = nav.querySelector(`.tab[data-tab="${state.tab}"]`);
-    const ind = nav.querySelector('.tab-ind');
-    if (!tab || !ind) return;
-    ind.style.width = `${tab.offsetWidth - 10}px`; // -10 px : coin biseauté en bas à droite
-    ind.style.transform = `translate(${tab.offsetLeft}px, ${tab.offsetTop + tab.offsetHeight - 2}px)`;
-    if (!ind.classList.contains('ready')) requestAnimationFrame(() => ind.classList.add('ready'));
-    const box = nav.getBoundingClientRect();
-    const r = tab.getBoundingClientRect();
-    if (r.left < box.left || r.right > box.right) nav.scrollTo({ left: tab.offsetLeft - 16, behavior: reduceMotion.matches ? 'auto' : 'smooth' });
+  // ───────── Menu ─────────
+  const menu = $('#menu');
+  const menuBtn = $('#menu-btn');
+  let menuTimer = 0;
+
+  function buildMenu() {
+    const split = 1 + CATEGORIES.length; // Radar + rubriques, puis Favoris, Sources, À propos
+    const item = (t, i) => `<a class="nav-item" href="#${t.id}" data-tab="${t.id}" style="--tc:${t.color};--n:${i + 1}" title="${esc(t.long)} (touche ${i + 1})">
+        <span class="ni-ico">${icon(t.icon)}</span>
+        <span class="ni-text"><span class="ni-label">${esc(t.label)}</span><span class="ni-hint">${esc(MENU_HINTS[t.id] || t.long)}</span></span>
+        <b class="badge" hidden></b><kbd class="ni-key">${i + 1}</kbd>
+      </a>`;
+    $('#nav').innerHTML = `<p class="nav-group" style="--n:0">Rubriques</p>${TABS.slice(0, split).map(item).join('')}`
+      + `<p class="nav-group" style="--n:${split}">NEXUS</p>${TABS.slice(split).map((t, i) => item(t, i + split)).join('')}`;
+    $('#menu-meta').textContent = `// ${TABS.length} pages`;
   }
+
+  function openMenu() {
+    clearTimeout(menuTimer);
+    menu.classList.remove('closing');
+    if (!menu.open) menu.showModal();
+    menuBtn.setAttribute('aria-expanded', 'true');
+    document.documentElement.classList.add('menu-open');
+    menu.querySelector('.nav-item[aria-current="page"]')?.focus();
+  }
+
+  /** Ferme le menu : le tiroir repart vers la gauche, puis la promesse se résout. */
+  function closeMenu(instant = false) {
+    return new Promise((resolve) => {
+      if (!menu.open) { resolve(); return; }
+      clearTimeout(menuTimer);
+      const done = () => { menu.close(); resolve(); };
+      if (instant || reduceMotion.matches) { done(); return; }
+      menu.classList.add('closing');
+      menuTimer = setTimeout(done, 240);
+    });
+  }
+
+  menu.addEventListener('close', () => {
+    menu.classList.remove('closing');
+    menuBtn.setAttribute('aria-expanded', 'false');
+    document.documentElement.classList.remove('menu-open');
+  });
+  menu.addEventListener('cancel', (e) => { e.preventDefault(); closeMenu(); }); // Échap : fermeture animée
+  menu.addEventListener('click', (e) => { if (e.target === menu) closeMenu(); }); // clic sur le voile
+  menuBtn.addEventListener('click', () => (menu.open ? closeMenu() : openMenu()));
+  $('#nav').addEventListener('click', (e) => {
+    const link = e.target.closest('a.nav-item');
+    if (!link || e.ctrlKey || e.metaKey || e.shiftKey || e.button) return; // nouvel onglet du navigateur : comportement normal
+    e.preventDefault();
+    closeMenu().then(() => { location.hash = link.dataset.tab; });
+  });
+
+  // Sur tablette et téléphone, l'en-tête tient sur une ligne : Auto et la fréquence passent dans le menu.
+  const narrow = matchMedia('(max-width: 860px)');
+  function placeControls() {
+    const ctl = $('#auto-ctl');
+    const slot = $('#menu-auto');
+    if (narrow.matches) slot.append(ctl);
+    else $('.controls').insertBefore(ctl, $('.refresh-wrap'));
+    slot.hidden = !narrow.matches;
+  }
+  narrow.addEventListener('change', placeControls);
+
+  // ───────── Transitions ─────────
 
   /** Repère glissant des sélecteurs (FR / EN, tri, vue…). */
   function syncPills(root = document) {
@@ -1444,24 +1501,33 @@
 
   function updateChrome() {
     let total = 0;
-    for (const el of document.querySelectorAll('.tab')) {
+    const count = (n) => (n > 99 ? '99+' : String(n));
+    for (const el of document.querySelectorAll('.nav-item')) {
       const id = el.dataset.tab;
       const selected = id === state.tab;
-      el.setAttribute('aria-selected', String(selected));
+      if (selected) el.setAttribute('aria-current', 'page');
+      else el.removeAttribute('aria-current');
       const isFavTab = id === 'favoris';
       const n = isFavTab ? Object.keys(state.favs).length : CAT[id] && !selected ? unseen(id) : 0;
       if (!isFavTab) total += n;
       const badge = el.querySelector('.badge');
       badge.hidden = !n;
       badge.classList.toggle('soft', isFavTab);
-      badge.textContent = n > 99 ? '99+' : String(n);
+      badge.textContent = count(n);
     }
+    // Le bouton du menu signale les nouveautés des rubriques qu'on ne regarde pas.
+    const menuBadge = $('#menu-badge');
+    menuBadge.hidden = !total;
+    menuBadge.textContent = count(total);
+    menuBtn.setAttribute('aria-label', `Ouvrir le menu${total ? `, ${total} nouveaux articles` : ''} (touche M)`);
     document.title = `${total ? `(${total}) ` : ''}NEXUS · Veille tech`;
     const active = activeSources();
     const online = active.filter((s) => state.results[s.id]?.ok).length;
-    $('#sync').innerHTML = state.lastSync
+    const sync = state.lastSync
       ? `Synchro <b>${new Date(state.lastSync).toLocaleTimeString('fr-FR')}</b> · ${online}/${active.length} sources`
       : 'Synchro —';
+    $('#sync').innerHTML = sync;
+    $('#menu-sync').innerHTML = sync;
   }
 
   function setBusy(busy) {
@@ -1570,7 +1636,6 @@
     renderHead();
     renderBody(enter);
     updateChrome();
-    moveIndicator();
   }
 
   function focusAddForm() {
@@ -1581,6 +1646,7 @@
   }
 
   window.addEventListener('hashchange', () => {
+    closeMenu(true); // touche 1–9 menu ouvert, bouton Précédent…
     const before = state.tab;
     const beforeSub = state.sub;
     parseHash();
@@ -1604,6 +1670,7 @@
       syncPills(el.parentElement.parentElement);
     };
     switch (act) {
+      case 'menu-close': closeMenu(); return;
       case 'sub':
         markSeg(); // le repère glisse, puis la page change
         setTimeout(() => { location.hash = SUBS[v] ? `${state.tab}/${SUBS[v]}` : state.tab; }, reduceMotion.matches ? 0 : 170);
@@ -1744,9 +1811,10 @@
       return;
     }
     const key = e.key.toLowerCase();
-    if (key === 'r') { e.preventDefault(); refresh(true); }
+    if (key === 'm') { e.preventDefault(); if (menu.open) closeMenu(); else openMenu(); }
+    else if (key === 'r') { e.preventDefault(); refresh(true); }
     else if (key === 'a') { const auto = $('#auto'); auto.checked = !auto.checked; auto.dispatchEvent(new Event('change')); }
-    else if (key === '/') { const q = $('#q'); if (q) { e.preventDefault(); q.focus(); } }
+    else if (key === '/') { const q = $('#q'); if (q) { e.preventDefault(); closeMenu(true); q.focus(); } }
     else if (/^[1-9]$/.test(key) && TABS[+key - 1]) location.hash = TABS[+key - 1].id;
   });
 
@@ -1780,16 +1848,17 @@
 
   async function init() {
     parseHash();
-    buildTabs();
+    buildMenu();
     setupControls();
+    placeControls();
     go(true); // affiche tout de suite le dernier état connu
-    // Les repères (onglet actif, sélecteurs) suivent la mise en page : redimensionnement, polices chargées.
+    // Les repères des sélecteurs suivent la mise en page : redimensionnement, polices chargées.
     let resizeTimer = 0;
     window.addEventListener('resize', () => {
       clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(() => { moveIndicator(); syncPills(); }, 120);
+      resizeTimer = setTimeout(() => syncPills(), 120);
     });
-    document.fonts?.ready.then(() => { moveIndicator(); syncPills(); });
+    document.fonts?.ready.then(() => syncPills());
     const relay = await detectRelay();
     state.relay = !!relay;
     state.hosted = !!relay?.hosted;

@@ -21,6 +21,12 @@
 
   <header class="top">
     <div class="top-inner">
+      <button id="menu-btn" class="burger" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="menu" aria-label="Ouvrir le menu (touche M)">
+        <span class="burger-lines" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="burger-label" aria-hidden="true">Menu</span>
+        <b id="menu-badge" class="badge" hidden></b>
+      </button>
+
       <a class="brand" href="#radar" aria-label="NEXUS, retour au radar">
         <svg class="brand-logo" viewBox="0 0 64 64" aria-hidden="true">
           <defs>
@@ -46,12 +52,15 @@
 
       <div class="controls">
         <span id="sync" class="sync">Synchro —</span>
-        <label class="switch" title="Rafraîchissement automatique (touche A)">
-          <input id="auto" type="checkbox">
-          <span class="track"><span class="thumb"></span></span>
-          <span class="switch-label">Auto</span>
-        </label>
-        <select id="interval" class="ctl" aria-label="Fréquence du rafraîchissement automatique"></select>
+        <!-- Sur tablette et téléphone, ces réglages passent dans le menu -->
+        <div id="auto-ctl" class="auto-ctl">
+          <label class="switch" title="Rafraîchissement automatique (touche A)">
+            <input id="auto" type="checkbox">
+            <span class="track"><span class="thumb"></span></span>
+            <span class="switch-label">Auto</span>
+          </label>
+          <select id="interval" class="ctl" aria-label="Fréquence du rafraîchissement automatique"></select>
+        </div>
         <div class="refresh-wrap">
           <button id="refresh" class="refresh" type="button" aria-label="Rafraîchir maintenant">
             <svg class="ring" viewBox="0 0 52 52" aria-hidden="true">
@@ -67,8 +76,27 @@
         </div>
       </div>
     </div>
-    <nav id="tabs" class="tabs" role="tablist" aria-label="Rubriques"></nav>
   </header>
+
+  <dialog id="menu" class="menu" aria-label="Menu">
+    <div class="menu-panel">
+      <div class="menu-head">
+        <button class="burger menu-close" type="button" data-act="menu-close" aria-label="Fermer le menu">
+          <span class="burger-lines" aria-hidden="true"><i></i><i></i><i></i></span>
+        </button>
+        <span class="menu-title">Navigation</span>
+        <span id="menu-meta" class="menu-meta"></span>
+      </div>
+      <nav id="nav" class="nav" aria-label="Pages"></nav>
+      <section id="menu-auto" class="menu-sec" hidden>
+        <h2>Rafraîchissement</h2>
+      </section>
+      <div class="menu-foot">
+        <span id="menu-sync">Synchro —</span>
+        <span class="keys"><kbd>M</kbd> menu <kbd>Échap</kbd> fermer <kbd>1</kbd>–<kbd>9</kbd> pages</span>
+      </div>
+    </div>
+  </dialog>
 
   <div id="banner"></div>
 
@@ -79,7 +107,7 @@
 
   <footer class="site-foot wrap">
     <span>NEXUS · veille tech sans compte, gratuite et open source · chaque article renvoie vers sa source d’origine · <a href="#apropos">À propos</a></span>
-    <span class="keys"><kbd>R</kbd> rafraîchir <kbd>A</kbd> auto <kbd>/</kbd> rechercher <kbd>1</kbd>–<kbd>9</kbd> onglets</span>
+    <span class="keys"><kbd>M</kbd> menu <kbd>R</kbd> rafraîchir <kbd>A</kbd> auto <kbd>/</kbd> rechercher <kbd>1</kbd>–<kbd>9</kbd> pages</span>
   </footer>
 
   <div id="warp" class="warp" aria-hidden="true"></div>

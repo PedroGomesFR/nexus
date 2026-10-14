@@ -43,7 +43,7 @@ NEXUS rassemble tout sur une seule page :
 | | |
 |---|---|
 | 🛰️ **Radar** | Vue d'ensemble : derniers titres de chaque rubrique, bandeau « en direct », statistiques |
-| 🔄 **Temps réel** | Rafraîchissement automatique de 30 s à 15 min, bouton manuel, badge sur les onglets qui ont du nouveau |
+| 🔄 **Temps réel** | Rafraîchissement automatique de 30 s à 15 min, bouton manuel, badge sur le menu et les rubriques qui ont du nouveau |
 | 🔎 **Filtres** | Recherche, langue (FR / EN), période, type de source, vue cartes ou liste |
 | 🎮 **Projets GitHub** | Catalogue des décompilations de jeux et des apps / API rétro-ingéniérées, triés par étoiles ou par activité |
 | 🕹️ **Jouer** | 25 jeux rétro-ingéniérés : liens officiels pour jouer en ligne ou télécharger, ce qu'il faut fournir et comment les lancer |
@@ -52,7 +52,7 @@ NEXUS rassemble tout sur une seule page :
 | 🧹 **Catalogue à la carte** | Retirez les sources qui ne vous intéressent pas, rétablissez-les en un clic |
 | 🌐 **Traduction** | Un clic pour lire un article anglais traduit en français |
 | 💾 **Sauvegarde** | Export / import JSON de vos favoris et réglages pour changer d'appareil |
-| ✨ **Interface** | Thème néon, transitions animées, adapté au mobile, raccourcis clavier |
+| ✨ **Interface** | Thème néon, menu hamburger, transitions animées, adapté au mobile, raccourcis clavier |
 
 <table>
   <tr>
@@ -106,15 +106,15 @@ Ensuite, chaque `git push` redéploie le site.
 | Variable | Rôle |
 |---|---|
 | `PORT` | Fournie par l'hébergeur. Sa présence active le mode en ligne : écoute sur `0.0.0.0`, pas d'ouverture de navigateur. |
-| `GITHUB_TOKEN` | Facultatif. Un jeton GitHub *fine-grained* **sans aucune permission** relève la limite de l'API GitHub, qui alimente les onglets Projets. |
+| `GITHUB_TOKEN` | Facultatif. Un jeton GitHub *fine-grained* **sans aucune permission** relève la limite de l'API GitHub, qui alimente les pages Projets GitHub. |
 | `HOST` | Facultatif. Adresse d'écoute, pour forcer une valeur. |
 
 Bon à savoir sur l'offre gratuite de Render : le service s'endort après 15 minutes sans visite et met environ une minute à se réveiller.
-Certains sites, comme Reddit, bloquent les serveurs d'hébergement : ces sources apparaissent alors en erreur dans l'onglet Sources.
+Certains sites, comme Reddit, bloquent les serveurs d'hébergement : ces sources apparaissent alors en erreur dans la page Sources.
 
 ## Personnaliser
 
-**Dans l'interface, pour vous seul.** L'onglet **Sources** permet de retirer une source du catalogue ou d'ajouter la vôtre.
+**Dans l'interface, pour vous seul.** La page **Sources** permet de retirer une source du catalogue ou d'ajouter la vôtre.
 Ces choix sont enregistrés dans votre navigateur. Pour les transférer, utilisez **Exporter** puis **Importer**.
 
 **Dans le code, pour tout le monde.** Le catalogue se trouve dans [`js/sources.js`](js/sources.js). Une source s'écrit en une ligne :
@@ -169,10 +169,11 @@ nexus/
 
 | Touche | Action |
 |---|---|
+| `M` | Ouvrir / fermer le menu |
 | `R` | Rafraîchir maintenant |
 | `A` | Activer / couper le rafraîchissement automatique |
 | `/` | Rechercher dans la rubrique |
-| `1` … `9` | Changer d'onglet |
+| `1` … `9` | Aller à une page |
 
 ## Contribuer
 
