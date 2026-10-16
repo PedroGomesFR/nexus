@@ -729,7 +729,12 @@
       let summary = clip(cleanSummary(toText(desc || content)), 280);
       if (summary && norm(summary).startsWith(norm(title)) && summary.length - title.length < 80) summary = ''; // simple redite du titre
       const it = { title, link, date, summary, image: entryImage(el, content || desc, link || url) };
-      if (via) it.via = via;
+      if (via) {
+        it.via = via;
+        // Domaine du média (« gamekult.com ») : le lien, lui, passe par Google. Sert aux filtres fromSites de sources.js.
+        const site = hostOf(safeUrl(kids(el, 'source')[0]?.getAttribute('url') || ''));
+        if (site) it.viaSite = site;
+      }
       return it;
     });
   }
@@ -822,8 +827,9 @@
       if (!raw.link || !raw.title) continue;
       const it = { ...raw }; // copie : l'analyse du flux est réutilisée telle quelle au prochain cycle
       const hay = itemText(it);
-      if (src.include && !src.include.test(hay)) continue;
-      if (src.exclude && src.exclude.test(hay)) continue;
+      // Expression régulière, ou filtre de sources.js qui regarde aussi le titre seul ou le média (test(texte, article)).
+      if (src.include && !src.include.test(hay, it)) continue;
+      if (src.exclude && src.exclude.test(hay, it)) continue;
       it.id = normId(it.link);
       if (seen.has(it.id)) continue;
       seen.add(it.id);
@@ -1829,9 +1835,9 @@
     const sub = [off ? 'Retirée : ni affichée ni interrogée' : SOURCE_LABELS[st]];
     if (r?.at) sub.push(`interrogée ${ago(r.at)}`);
     if ((s.minAge ?? 30) >= 300) sub.push(`au plus toutes les ${Math.round(s.minAge / 60)} min`);
-    if (s.include) sub.push(s.custom ? `filtre : ${s.keywords}` : 'filtrée par mots-clés');
+    if (s.include) sub.push(s.custom ? `filtre : ${s.keywords}` : s.include.label || 'filtrée par mots-clés');
     if (pageFilter(s)) sub.push(`filtrée par les mots-clés de la page : ${pageQuery(s.cat)}`);
-    if (s.exclude && s.kind !== 'github') sub.push('sujets « jeux » exclus');
+    if (s.exclude && s.kind !== 'github') sub.push(s.exclude.label || 'certains sujets exclus');
     const cat = CAT[s.cat];
     const name = esc(s.name);
     let action;

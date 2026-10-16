@@ -95,7 +95,11 @@ dans `serveur.py`, sinon il répond 404 (voulu : seul le site est servi, pas `.g
   devinez jamais une adresse de flux. Si vous ne pouvez pas la vérifier, dites-le.
 - **Jeux et apps : liens officiels uniquement** (site ou dépôt du projet). Jamais de ROM, de fichiers de
   jeu ou de logiciel piraté, ni de lien qui y mène. Le champ `needs` dit honnêtement ce qu'il faut fournir.
-- Les nombres affichés dans le README (42 sources, 25 jeux, 23 apps, 13 modèles) et son tableau des
+- **Une source généraliste se filtre** pour coller à sa rubrique, avec les filtres de `js/sources.js`
+  (`topic`, `inTitle`, `fromSites`, `all`, `some`) plutôt qu'une regex ad hoc. Avant de modifier un filtre,
+  regardez sur le flux réel ce qu'il garde **et** ce qu'il rejette : la liste `GAME` sert aussi à exclure
+  les jeux de Reverse Apps, un mot à double sens (« descent », « GB ») y fait des dégâts.
+- Les nombres affichés dans le README (57 sources, 25 jeux, 23 apps, 13 modèles) et son tableau des
   sources doivent suivre le catalogue.
 
 ## Publier une version

@@ -7,7 +7,7 @@
 **La veille tech en temps réel — sans compte, gratuite et open source.**
 
 IA · apps et jeux rétro-ingéniérés · informatique · cybersécurité<br>
-42 sources fiables, rafraîchies toutes les minutes, au même endroit.<br>
+57 sources fiables, rafraîchies toutes les minutes, au même endroit.<br>
 Et vos propres pages sur n'importe quel sujet : F1, foot, politique…
 
 <br>
@@ -97,12 +97,16 @@ NEXUS rassemble tout sur une seule page :
 | Rubrique | Sources |
 |---|---|
 | **IA** | OpenAI, Google DeepMind, Google AI, Hugging Face, MIT Technology Review, Ars Technica, The Verge, TechCrunch, Numerama, ActuIA, Simon Willison |
-| **Reverse Apps** | Google Project Zero, Check Point Research, Trail of Bits, Objective-See, Hackaday, Hacker News, Lobsters, r/ReverseEngineering, GitHub |
-| **Reverse Jeux** | Time Extension, Ars Technica, Hacker News, Hackaday, Lobsters (filtrés par mots-clés), GitHub |
+| **Reverse Apps** | Google Project Zero, Check Point Research, Quarkslab, Objective-See, Hex-Rays (IDA), Binary Ninja, Asahi Linux, Ken Shirriff, Hackaday, Hacker News, Lobsters, r/ReverseEngineering, GitHub |
+| **Reverse Jeux** | Dolphin, RPCS3, RetroReversing, Nicole Express, Time Extension, Ars Technica, GamingOnLinux, Korben, la presse française et anglophone via Google Actualités, Hacker News, Hackaday, Lobsters, r/emulation, GitHub |
 | **Informatique** | Hacker News, Ars Technica, The Verge, LWN.net, Tom's Hardware, Next, Numerama, 01net, ZDNet France, Korben |
-| **Cybersécurité** | CERT-FR (ANSSI), NCSC (Royaume-Uni), BleepingComputer, The Hacker News, ZATAZ, Krebs on Security |
+| **Cybersécurité** | CERT-FR (ANSSI), NCSC (Royaume-Uni), BleepingComputer, The Hacker News, ZATAZ, Krebs on Security, Trail of Bits |
 
 Toutes les sources sont des flux RSS/Atom ou des API publiques.
+Les sources généralistes sont filtrées pour coller à leur rubrique : en Reverse Jeux, la presse jeu vidéo ne garde que la
+décompilation, les portages de fans et l'émulation. Un terme fort (« décompilation ») suffit n'importe où dans l'article,
+un terme faible (« émulateur ») doit être dans le titre. Les recherches Google Actualités ne gardent que des rédactions
+reconnues (Gamekult, Frandroid, Numerama, The Verge, PC Gamer…). La page **Sources** indique le filtre de chaque source.
 Le classement des IA vient du catalogue public d'[OpenRouter](https://openrouter.ai/models), qui reprend les indices d'[Artificial Analysis](https://artificialanalysis.ai/). La taille des modèles à poids ouverts vient de [Hugging Face](https://huggingface.co/).
 NEXUS affiche le titre, un court extrait et le lien de chaque article, comme un lecteur RSS. Le contenu appartient à ses auteurs.
 
@@ -169,7 +173,7 @@ Ces choix sont enregistrés dans votre navigateur. Pour les transférer, utilise
 | `url` | Flux RSS/Atom ou API ; un tableau pour fusionner plusieurs requêtes |
 | `kind` | `rss` (par défaut), `hn` (recherche Hacker News) ou `github` (recherche de dépôts) |
 | `type` | `officiel`, `presse`, `recherche`, `expert`, `communaute` ou `projet` |
-| `include` / `exclude` | Expression régulière pour filtrer les articles par mots-clés |
+| `include` / `exclude` | Filtre des articles : une expression régulière, ou un filtre de `js/sources.js` (titre seul, média…) avec son libellé |
 | `minAge` | Délai minimal entre deux requêtes, en secondes (30 par défaut) |
 
 **Publier une version.** La version en ligne est la première entrée de [`js/changelog.js`](js/changelog.js) :
@@ -184,7 +188,7 @@ c'est elle qu'affichent le menu, le pied de page, « À propos » et la page **N
 
 ```mermaid
 flowchart LR
-    S["42 sources<br/>RSS · Atom · API"] -->|HTTPS| R["serveur.py<br/>relais + cache"]
+    S["57 sources<br/>RSS · Atom · API"] -->|HTTPS| R["serveur.py<br/>relais + cache"]
     R -->|/api/proxy| A["Navigateur<br/>app.js"]
     A --> L[("localStorage<br/>favoris · sources perso")]
 ```
