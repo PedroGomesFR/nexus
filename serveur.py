@@ -338,10 +338,12 @@ class Handler(SimpleHTTPRequestHandler):
         ".ico": "image/x-icon",
         ".py": "text/plain; charset=utf-8",  # code affiche, pas telecharge (page « A propos »)
         ".md": "text/plain; charset=utf-8",
+        ".webmanifest": "application/manifest+json",
         "": "text/plain; charset=utf-8",  # LICENSE
     }
-    # Fichiers publics en plus de index.html, css/ et js/ : le site est open source.
-    PUBLIC_FILES = ("/serveur.py", "/LICENSE", "/README.md", "/CHANGELOG.md")
+    # Fichiers publics en plus de index.html, css/, js/ et icons/ : le site est open source,
+    # et installable (manifeste + service worker, qui doit etre a la racine pour couvrir tout le site).
+    PUBLIC_FILES = ("/serveur.py", "/LICENSE", "/README.md", "/CHANGELOG.md", "/manifest.webmanifest", "/sw.js")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
@@ -372,7 +374,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.proxy(parse_qs(route.query).get("url", [""])[0])
         elif route.path == "/api/discover":
             self.discover(parse_qs(route.query).get("url", [""])[0])
-        elif route.path in ("/", "/index.html", *self.PUBLIC_FILES) or route.path.startswith(("/css/", "/js/")):
+        elif route.path in ("/", "/index.html", *self.PUBLIC_FILES) or route.path.startswith(("/css/", "/js/", "/icons/")):
             self.static(route.path)  # seul le site est servi, pas le reste du dossier (.git, render.yaml...)
         else:
             self.send_error(404, "Not found")
@@ -470,6 +472,9 @@ class Handler(SimpleHTTPRequestHandler):
 class Server(ThreadingHTTPServer):
     # Sous Windows, SO_REUSEADDR laisserait deux serveurs partager le meme port.
     allow_reuse_address = sys.platform != "win32"
+    # File d'attente des connexions : 5 par defaut, trop peu quand la page, ses flux et le service worker
+    # demandent des dizaines de fichiers d'un coup (Windows refuse alors les suivantes).
+    request_queue_size = 64
 
     def handle_error(self, request, client_address):
         if isinstance(sys.exc_info()[1], (ConnectionError, TimeoutError)):

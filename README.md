@@ -12,7 +12,7 @@ Et vos propres pages sur n'importe quel sujet : F1, foot, politique…
 
 <br>
 
-[![Version 1.10](https://img.shields.io/badge/version-1.10-f9a8d4?style=for-the-badge)](CHANGELOG.md)
+[![Version 2.0](https://img.shields.io/badge/version-2.0-f9a8d4?style=for-the-badge)](CHANGELOG.md)
 ![Licence MIT](https://img.shields.io/badge/licence-MIT-00e5ff?style=for-the-badge)
 ![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-ff2bd6?style=for-the-badge&logo=python&logoColor=white)
 ![Zéro dépendance](https://img.shields.io/badge/d%C3%A9pendances-0-a3ff12?style=for-the-badge)
@@ -44,9 +44,13 @@ NEXUS rassemble tout sur une seule page :
 
 | | |
 |---|---|
-| 🛰️ **Radar** | Vue d'ensemble : derniers titres de chaque rubrique, bandeau « en direct », statistiques |
+| 🛰️ **Radar** | Vue d'ensemble : derniers titres de chaque rubrique, bandeau « en direct », statistiques, **sujets du moment** (les noms les plus cités dans les titres des dernières 24 h) |
 | 🔄 **Temps réel** | Rafraîchissement automatique de 30 s à 15 min, bouton manuel, badge sur le menu et les rubriques qui ont du nouveau |
-| 🔎 **Filtres** | Recherche, langue (FR / EN), période, type de source, vue cartes ou liste |
+| ⌨️ **Rechercher partout** | `Ctrl K` (ou la loupe) : articles de toutes les rubriques et favoris, projets GitHub, jeux, apps, modèles d'IA, pages et actions, au clavier |
+| 🔔 **Alertes** | Des mots surveillés sur tout le site : chaque nouvel article qui en parle est signalé, étiqueté et rassemblé dans la page Alertes, avec notification du navigateur en option |
+| 🔎 **Filtres** | Recherche, langue (FR / EN), période, type de source, vue cartes ou liste, **non lus seulement** |
+| 👁️ **Lu / non lu** | Un article ouvert s'estompe ; « Non lus » masque ceux déjà lus, « Tout marquer comme lu » s'annule en un clic |
+| 📲 **Application** | NEXUS s'installe sur l'écran d'accueil (Android, iPhone, ordinateur) et reste lisible hors ligne ; partage d'un article en un geste |
 | 🏆 **Classement des IA** | Tous les modèles évalués par Artificial Analysis : index d'intelligence, de code et d'agents, prix d'entrée et de sortie, intelligence par dollar, contexte, taille (poids ouverts), date de sortie. Tri par colonne, filtres poids ouverts / propriétaires, capacités et créateur |
 | 🎮 **Projets GitHub** | Catalogue des décompilations de jeux et des apps / API rétro-ingéniérées, triés par étoiles ou par activité |
 | 🕹️ **Jouer** | 25 jeux rétro-ingéniérés : liens officiels pour jouer en ligne ou télécharger, ce qu'il faut fournir et comment les lancer |
@@ -61,6 +65,12 @@ NEXUS rassemble tout sur une seule page :
 | ✨ **Interface** | Thème néon, menu hamburger, transitions animées, adapté au mobile, raccourcis clavier |
 
 <table>
+  <tr>
+    <td colspan="2"><img src="docs/recherche.jpg" alt="Rechercher partout : articles, pages et actions, mots trouvés surlignés"><br><sub><b>Ctrl K → Rechercher partout</b> : un mot, et NEXUS trouve les articles de toutes les rubriques, les pages, les jeux, les apps, les modèles d'IA et les actions. Flèches et Entrée pour ouvrir.</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/alertes.jpg" alt="Page Alertes : mots surveillés, articles signalés et notifications"><br><sub><b>Menu → Alertes</b> : les mots surveillés, les articles qui en parlent dans toutes les rubriques, et la notification du navigateur en option.</sub></td>
+  </tr>
   <tr>
     <td colspan="2"><img src="docs/classement-ia.jpg" alt="Classement des modèles d'IA triable par intelligence, prix, contexte et taille"><br><sub><b>IA → Classement</b> : les modèles d'IA triés par intelligence, code, agents, prix, contexte, taille ou date, avec les meilleurs de chaque catégorie en tête.</sub></td>
   </tr>
@@ -197,6 +207,9 @@ nexus/
 ├── js/changelog.js historique des versions (page « Nouveautés »)
 ├── js/app.js       l'application (JavaScript pur, sans framework)
 ├── serveur.py      le relais (bibliothèque standard Python)
+├── sw.js           service worker : application installable, lecture hors ligne
+├── manifest.webmanifest  nom, icônes et couleurs de l'application installée
+├── icons/          icônes de l'application
 ├── CHANGELOG.md    journal des versions
 ├── lancer.bat      démarrage en un double-clic sous Windows
 ├── render.yaml     configuration de déploiement Render
@@ -205,7 +218,9 @@ nexus/
 
 ## Vie privée et sécurité
 
-- **Aucune donnée collectée.** Pas de compte, pas de cookie de suivi, pas de statistiques. Favoris, pages perso et réglages restent dans le `localStorage` de votre navigateur.
+- **Aucune donnée collectée.** Pas de compte, pas de cookie de suivi, pas de statistiques. Favoris, articles lus, alertes, pages perso et réglages restent dans le `localStorage` de votre navigateur.
+- **Alertes et notifications locales.** Les mots surveillés ne quittent pas votre navigateur : c'est NEXUS, ouvert dans un onglet, qui compare les nouveaux articles et affiche la notification. Aucun serveur d'envoi.
+- **Hors ligne.** Le service worker garde seulement les fichiers du site (jamais les réponses du relais) et ne s'en sert que sans connexion : en ligne, la dernière version est toujours chargée.
 - **Mots-clés des pages perso.** Ils sont transmis à Google Actualités par le relais, comme une recherche ordinaire, sans rien qui vous identifie.
 - **Contenus tiers chargés.** Ce sont seulement les images des articles (depuis leurs sites), les polices Google Fonts et, si vous cliquez sur « Traduire », Google Traduction.
 - **Un relais limité.** Il refuse les adresses du réseau local. Pour les sources perso, il ne relaie que de vrais flux RSS/Atom, avec une limite de débit une fois en ligne : il ne peut pas servir de proxy web ouvert.
@@ -216,11 +231,12 @@ nexus/
 
 | Touche | Action |
 |---|---|
+| `Ctrl K` (`⌘ K` sur Mac) | Rechercher partout ; `↑` `↓` pour choisir, `Entrée` pour ouvrir |
 | `M` | Ouvrir / fermer le menu |
 | `R` | Rafraîchir maintenant |
 | `A` | Activer / couper le rafraîchissement automatique |
 | `/` | Rechercher dans la rubrique |
-| `1` … `9` | Aller à une page |
+| `1` … `9` | Aller à l'une des neuf premières pages du menu |
 
 ## Contribuer
 

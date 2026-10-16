@@ -11,6 +11,21 @@
  */
 window.NEXUS_CHANGELOG = [
   {
+    version: '2.0', date: '2026-10-16', title: 'Recherche partout, alertes, lu / non lu, application',
+    changes: [
+      ['new', 'Rechercher partout (Ctrl K ou la loupe en haut) : articles de toutes les rubriques et favoris, projets GitHub, jeux, apps, modèles d’IA, pages et actions, avec les mots trouvés surlignés.'],
+      ['new', 'Alertes : des mots surveillés sur tout le site. Chaque nouvel article qui en parle est signalé, marqué d’une étiquette sur sa carte et rassemblé dans la page Alertes ; notification du navigateur en option.'],
+      ['new', 'Sujets du moment sur le Radar : les noms les plus cités dans les titres des dernières 24 h, par plusieurs sources ; un clic les cherche partout.'],
+      ['new', 'Lu / non lu : un article ouvert s’estompe. Bouton « Non lus » pour masquer ceux déjà lus, et « Tout marquer comme lu » (annulable).'],
+      ['new', 'Partager un article : menu de partage du téléphone, ou lien copié sur ordinateur.'],
+      ['new', 'NEXUS s’installe comme une application (Android, iPhone, ordinateur) et reste lisible hors ligne avec les derniers articles enregistrés.'],
+      ['better', 'Démarrage immédiat : les polices ne bloquent plus l’affichage quand Google Fonts est lent ou injoignable.'],
+      ['better', 'En-tête toujours sur une ligne, de 320 à 2560 px ; sur petit écran, Auto et la fréquence passent dans le menu dès 1100 px.'],
+      ['better', 'Recherche plus précise : un mot court ne trouve que les mots qui commencent ainsi (« IA » ne trouve plus « fiabilité »).'],
+      ['fix', 'Message des nouveaux articles : « +12 nouveaux articles » au lieu de « nouvels ». Relais local plus robuste quand beaucoup de fichiers sont demandés d’un coup.'],
+    ],
+  },
+  {
     version: '1.10', date: '2026-10-14', title: 'Les pages perso suivent leurs mots-clés',
     changes: [
       ['better', 'Pages perso : les sites de la page (médias du modèle, sites ajoutés) n’affichent plus que les articles qui parlent de vos mots-clés, en plus de la recherche Google Actualités.'],

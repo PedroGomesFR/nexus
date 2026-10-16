@@ -18,6 +18,7 @@
     { id: 'radar', label: 'Radar', long: 'Radar', icon: 'radar', color: '#00e5ff', about: 'Les derniers titres de chaque rubrique, en un coup d’œil.' },
     ...CATEGORIES,
     { id: 'favoris', label: 'Favoris', long: 'Favoris', icon: 'bookmark', color: '#ffd34d', about: 'Vos articles et projets enregistrés. Ils restent ici même quand ils disparaissent des flux.' },
+    { id: 'alertes', label: 'Alertes', long: 'Alertes', icon: 'bell', color: '#ff9f43', about: 'Les mots que vous surveillez sur tout NEXUS : chaque article qui en parle est rassemblé ici et signalé dès sa parution, tant que NEXUS est ouvert (même en arrière-plan).' },
     { id: 'sources', label: 'Sources', long: 'Sources & fiabilité', icon: 'list', color: '#a5b4fc', about: 'D’où vient chaque information, son niveau de fiabilité et son état en direct. Retirez celles qui ne vous intéressent pas, ajoutez les vôtres.' },
     { id: 'apropos', label: 'À propos', long: 'À propos', icon: 'info', color: '#5eead4', about: 'Pourquoi NEXUS existe, comment il fonctionne et ce qu’il fait (et ne fait pas) de vos données.' },
     { id: 'nouveautes', label: 'Nouveautés', long: 'Nouveautés', icon: 'gift', color: '#f9a8d4', about: 'Ce qui a changé sur NEXUS, version par version. Les versions sorties depuis votre dernière visite sont signalées.' },
@@ -31,6 +32,7 @@
     info: 'Actualité informatique',
     cyber: 'Alertes et menaces',
     favoris: 'Vos articles enregistrés',
+    alertes: 'Vos mots surveillés partout',
     sources: 'Fiabilité · sources perso',
     apropos: 'Sans compte, gratuit, open source',
     nouveautes: `Version ${VERSION} · ce qui a changé`,
@@ -66,6 +68,8 @@
   const BOARD_KEY = 'nexus.board'; // dernier classement des modèles d'IA reçu
   const SIZES_KEY = 'nexus.sizes'; // nombre de paramètres des modèles à poids ouverts (ne change pas)
   const SEEN_KEY = 'nexus.seen'; // dernière version vue dans « Nouveautés » et dernière version annoncée
+  const READ_KEY = 'nexus.read'; // articles ouverts : identifiant → date
+  const ALERTS_KEY = 'nexus.alerts'; // mots surveillés sur tout le site + notifications du navigateur
   const THEMES = window.NEXUS_THEMES || []; // modèles de pages (js/themes.js)
   const PAGE_ICONS = ['news', 'landmark', 'vote', 'users', 'car', 'flag', 'ball', 'trophy', 'dumbbell', 'chart', 'briefcase', 'film', 'music', 'games', 'rocket', 'leaf', 'heart', 'book', 'globe', 'star', 'ai', 'chip', 'shield', 'chat'];
   const PAGE_COLORS = ['#00e5ff', '#4d8dff', '#8b5cf6', '#ff2bd6', '#ff4d6d', '#f97316', '#ffb020', '#ffd34d', '#a3ff12', '#5eead4'];
@@ -98,6 +102,12 @@
     code: '<path d="m16 18 6-6-6-6M8 6l-6 6 6 6"/>',
     lock: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
     eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+    bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
+    share: '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.59 13.51 6.83 3.98M15.41 6.51l-6.82 3.98"/>',
+    trend: '<path d="m22 7-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/>',
+    offline: '<path d="M12 20h.01M8.5 16.43a5 5 0 0 1 7 0M5 12.86a10 10 0 0 1 5.17-2.69M19 12.86a10 10 0 0 0-2-1.52M2 8.82a15 15 0 0 1 4.18-2.64M22 8.82a15 15 0 0 0-11.29-3.76M2 2l20 20"/>',
+    phone: '<rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/>',
+    enter: '<path d="M9 10 4 15l5 5"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/>',
     play: '<polygon points="6 3 20 12 6 21 6 3"/>',
     globe: '<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
     search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
@@ -141,6 +151,14 @@
   const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
   const clip = (s, n) => (s.length > n ? s.slice(0, n).replace(/\s+\S*$/, '') + '…' : s);
   const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // Mot cherché dans un texte normalisé (norm) : un mot court doit commencer un mot (« ia » ≠ « fiabilité »),
+  // un mot plus long peut être n'importe où (« soft » trouve « Microsoft »).
+  const wordStarts = new Map();
+  const hasToken = (hay, t) => {
+    if (t.length > 3) return hay.includes(t);
+    if (!wordStarts.has(t)) wordStarts.set(t, new RegExp(`(?:^|[^a-z0-9])${escapeRe(t)}`));
+    return wordStarts.get(t).test(hay);
+  };
   const safeUrl = (u, base) => {
     try {
       const url = new URL(String(u).trim(), base);
@@ -298,13 +316,19 @@
   function keywordMatcher(query) {
     if (!matchers.has(query)) {
       const terms = splitQuery(query)
-        .map((t) => {
-          const words = norm(t).split(/[^a-z0-9]+/).filter(Boolean);
+        .map((label) => {
+          const words = norm(label).split(/[^a-z0-9]+/).filter(Boolean);
           const kept = words.filter((w) => !STOPWORDS.has(w));
-          return (kept.length ? kept : words).map((w) => new RegExp(`(?:^|[^a-z0-9])${escapeRe(w)}${w.length <= 3 ? '(?:s|x)?(?![a-z0-9])' : ''}`));
+          return { label, res: (kept.length ? kept : words).map((w) => new RegExp(`(?:^|[^a-z0-9])${escapeRe(w)}${w.length <= 3 ? '(?:s|x)?(?![a-z0-9])' : ''}`)) };
         })
-        .filter((words) => words.length);
-      matchers.set(query, terms.length ? (text) => { const h = norm(text); return terms.some((t) => t.every((re) => re.test(h))); } : null);
+        .filter((t) => t.res.length);
+      let test = null;
+      if (terms.length) {
+        const hit = (h) => terms.find((t) => t.res.every((re) => re.test(h)));
+        test = (text) => !!hit(norm(text));
+        test.which = (text) => hit(norm(text))?.label || ''; // le mot-clé trouvé (alertes)
+      }
+      matchers.set(query, test);
     }
     return matchers.get(query);
   }
@@ -476,6 +500,7 @@
     view: saved.view === 'list' ? 'list' : 'grid',
     projSort: saved.projSort === 'recent' ? 'recent' : 'stars',
     favSort: saved.favSort === 'date' ? 'date' : 'added',
+    hideRead: saved.hideRead === true, // « Non lus » : les articles déjà ouverts sont masqués
     playFilter: 'all', // vue « Jouer » : all | online | free | own
     useFilter: 'all', // vue « Utiliser » : all | device | service | system | file
     usePlat: 'all', // vue « Utiliser » : plateforme
@@ -502,6 +527,44 @@
     lastSync: saved.lastSync || 0,
   };
 
+  // ───────── Lu / non lu ─────────
+  // Un article ouvert (titre, traduction, discussion) est « lu » : sa carte s'estompe. Avec « Non lus »,
+  // il disparaît, sauf s'il a été ouvert pendant cette visite de la page (pas de carte qui saute sous le doigt).
+  let readMap = readJSON(READ_KEY, {});
+  if (!readMap || typeof readMap !== 'object' || Array.isArray(readMap)) readMap = {};
+  const isRead = (it) => it.id in readMap;
+  const keepShown = new Set();
+  const saveRead = () => writeJSON(READ_KEY, readMap);
+  function markRead(ids, keep = true) {
+    const t = Date.now();
+    for (const id of ids) {
+      readMap[id] = t;
+      if (keep) keepShown.add(id);
+    }
+    saveRead();
+  }
+  /** Oublie les articles lus qui ne sont plus dans aucun flux ni dans les favoris (au plus 5000 retenus). */
+  function pruneRead() {
+    const live = new Set(Object.keys(state.favs));
+    for (const r of Object.values(state.results)) for (const it of r.items || []) live.add(it.id);
+    const kept = Object.entries(readMap).filter(([id]) => live.has(id)).sort((a, b) => b[1] - a[1]).slice(0, 5000);
+    readMap = Object.fromEntries(kept);
+    saveRead();
+  }
+
+  // ───────── Alertes ─────────
+  // Des mots surveillés sur tout le site (mêmes règles que les mots-clés des pages perso).
+  const alertsRaw = readJSON(ALERTS_KEY, {}) || {};
+  const alerts = { query: splitQuery(alertsRaw.query).join(', '), notify: alertsRaw.notify === true };
+  const saveAlerts = () => writeJSON(ALERTS_KEY, alerts) || storageWarning();
+  const alertTest = () => keywordMatcher(alerts.query);
+  /** Mot-clé d'alerte trouvé dans l'article, sinon ''. */
+  const alertOf = (it) => (it.repo ? '' : alertTest()?.which(itemText(it)) || '');
+  const alertItems = () => {
+    if (!alertTest()) return [];
+    return dedupe(CATEGORIES.flatMap((c) => newsItems(c.id))).filter((it) => alertOf(it)).sort((a, b) => (b.date || 0) - (a.date || 0));
+  };
+
   // Articles enregistrés avant le filtre des pages perso (ou avant un import) : filtrés dès l'ouverture.
   for (const s of SOURCES) {
     const keep = pageFilter(s);
@@ -511,7 +574,7 @@
 
   function persist() {
     writeJSON(STORE_KEY, {
-      lang: state.lang, period: state.period, view: state.view, projSort: state.projSort, favSort: state.favSort,
+      lang: state.lang, period: state.period, view: state.view, projSort: state.projSort, favSort: state.favSort, hideRead: state.hideRead,
       boardSort: state.boardSort, boardDir: state.boardDir,
       hidden: [...state.hidden], auto: state.auto, interval: state.interval,
       results: state.results, firstSeen: state.firstSeen, lastVisit: state.lastVisit, lastSync: state.lastSync,
@@ -797,6 +860,11 @@
       state.again = true; // source ajoutée ou rétablie pendant un cycle : on relance juste après
       return;
     }
+    if (!navigator.onLine) { // hors ligne : on garde les derniers articles enregistrés, sans tout marquer en erreur
+      if (manual) toast('Hors ligne', 'Pas de connexion : voici les derniers articles enregistrés. NEXUS se remet à jour au retour du réseau.');
+      schedule();
+      return;
+    }
     const now = Date.now();
     const due = activeSources().filter((s) => state.results[s.id]?.rebase || now - (state.results[s.id]?.at || 0) >= (s.minAge ?? 30) * 1000 - 1500);
     if (!due.length) {
@@ -837,12 +905,15 @@
     state.loading = false;
     state.lastSync = Date.now();
     pruneSeen();
+    pruneRead();
     persist();
     setBusy(false);
     schedule();
     renderBody();
     updateChrome();
     pulseSync();
+    const hits = alertTest() ? dedupe(fresh.filter((it) => SRC[it.src] && alertOf(it))) : [];
+    if (hits.length) notifyAlerts(hits);
     if (fresh.length) notifyNew(fresh.filter((it) => SRC[it.src]));
     else if (manual) toast('Synchronisé', 'Aucun nouvel article depuis la dernière vérification.');
     if (state.again) {
@@ -904,6 +975,7 @@
     return items.filter((it) => {
       const src = srcOf(it);
       if (mode !== 'favs' && state.hidden.has(src.id)) return false;
+      if ((mode === 'news' || mode === 'alerts') && state.hideRead && isRead(it) && !keepShown.has(it.id)) return false;
       if (mode === 'news') {
         if (state.lang !== 'all' && src.lang !== state.lang) return false;
         if (state.type !== 'all' && src.type !== state.type) return false;
@@ -911,7 +983,7 @@
       }
       if (tokens.length) {
         const hay = norm(`${it.title} ${it.summary} ${src.name} ${it.via || ''} ${it.host || ''} ${(it.topics || []).join(' ')} ${it.language || ''}`);
-        if (!tokens.every((t) => hay.includes(t))) return false;
+        if (!tokens.every((t) => hasToken(hay, t))) return false;
       }
       return true;
     });
@@ -1191,6 +1263,7 @@
     const label = on ? 'Retirer des favoris' : 'Ajouter aux favoris';
     return `<button class="fav${on ? ' on' : ''}" data-act="fav" data-v="${esc(it.id)}" title="${label}" aria-label="${label}" aria-pressed="${on}">${icon('bookmark')}</button>`;
   };
+  const shareBtn = (it) => `<button class="share" data-act="share" data-v="${esc(it.id)}" title="Partager ou copier le lien" aria-label="Partager « ${esc(clip(it.title, 60))} »">${icon('share')}</button>`;
 
   function cardHTML(it, i) {
     const src = srcOf(it);
@@ -1205,13 +1278,15 @@
     if (src.lang === 'en') {
       foot.push(`<span class="push">${extLink(`https://translate.google.com/translate?sl=auto&tl=fr&u=${encodeURIComponent(it.link)}`, `${icon('translate')}Traduire`, 'Ouvrir l’article traduit en français')}</span>`);
     }
-    foot.push(favBtn(it));
+    foot.push(shareBtn(it), favBtn(it));
     const name = it.via || src.name; // article trouvé par Google Actualités : on affiche le vrai média
-    return `<article class="card${fresh ? ' is-new' : ''}" data-src="${esc(src.id)}" data-key="${esc(it.id)}" style="--h:${hue(name)};--c:${cat.color};--i:${Math.min(i, 18)}">
+    const alert = alertOf(it);
+    const cls = `${fresh ? ' is-new' : ''}${isRead(it) ? ' is-read' : ''}${alert ? ' is-alert' : ''}`;
+    return `<article class="card${cls}" data-src="${esc(src.id)}" data-key="${esc(it.id)}" style="--h:${hue(name)};--c:${cat.color};--i:${Math.min(i, 18)}">
       ${fresh ? '<span class="new-pill">NOUVEAU</span>' : ''}
       <div class="media">${it.image && !badImages.has(it.image) ? `<img src="${esc(it.image)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : phHTML(it.via ? { name } : src)}</div>
       <div class="body">
-        <div class="meta"><span class="src"${it.via ? ` title="Trouvé via ${esc(src.name)}"` : ''}>${esc(name)}</span>${typeBadge(src.type)}${timeTag(it.date)}</div>
+        <div class="meta"><span class="src"${it.via ? ` title="Trouvé via ${esc(src.name)}"` : ''}>${esc(name)}</span>${typeBadge(src.type)}${alert ? `<a class="alert-tag" href="#alertes" title="Alerte : cet article parle de « ${esc(alert)} »">${icon('bell')}${esc(alert)}</a>` : ''}${timeTag(it.date)}</div>
         <h3>${extLink(it.link, esc(it.title))}</h3>
         ${it.summary ? `<p class="sum">${esc(it.summary)}</p>` : ''}
         <div class="cf">${foot.join('')}</div>
@@ -1242,7 +1317,7 @@
           <span title="${it.forks} forks">${icon('fork')}${compact(it.forks)}</span>
           ${it.language ? `<span class="lang-dot" style="--h:${hue(it.language)}">${esc(it.language)}</span>` : ''}
           <span class="push" title="Dernière modification du code">${icon('clock')}${timeTag(it.date, true)}</span>
-          ${favBtn(it)}
+          ${shareBtn(it)}${favBtn(it)}
         </div>
       </div>
     </article>`;
@@ -1317,10 +1392,22 @@
     const all = newsItems(catId);
     const items = filterItems(all);
     const shown = items.slice(0, limit);
+    const empty = !items.length && state.hideRead && all.some(isRead) ? allReadHTML() : emptyHTML(srcs, all.length, catId);
     return `${CAT[catId]?.custom ? pageKeywordsHTML(catId) : ''}${chipsHTML(catId, srcs, all)}
-      <div class="count-line"><span><b>${items.length}</b> article${items.length > 1 ? 's' : ''}${items.length !== all.length ? ` sur ${all.length}` : ''}</span></div>
-      ${shown.length ? `<div class="grid ${state.view}">${shown.map(cardHTML).join('')}</div>${moreHTML(items.length - shown.length)}` : emptyHTML(srcs, all.length, catId)}`;
+      ${countLineHTML(items, all.length)}
+      ${shown.length ? `<div class="grid ${state.view}">${shown.map(cardHTML).join('')}</div>${moreHTML(items.length - shown.length)}` : empty}`;
   }
+
+  /** « 40 articles sur 52 · 12 non lus », avec « Tout marquer comme lu » s'il reste des non-lus. */
+  function countLineHTML(items, total) {
+    const unread = items.filter((it) => !isRead(it)).length;
+    const s = (n) => (n > 1 ? 's' : '');
+    return `<div class="count-line"><span><b>${items.length}</b> article${s(items.length)}${items.length !== total ? ` sur ${total}` : ''}${unread !== items.length ? ` · ${unread} non lu${s(unread)}` : ''}</span>
+      ${unread ? `<button type="button" class="link mark-read" data-act="mark-read">${icon('check')}Tout marquer comme lu</button>` : ''}</div>`;
+  }
+
+  const allReadHTML = () => `<div class="empty">${icon('check')}<b>Tout est lu</b><p>Vous avez ouvert tous les articles affichés ici. Les prochains arriveront au fil des mises à jour.</p>
+    <button class="btn" data-act="hide-read">${icon('eye')}Afficher aussi les lus</button></div>`;
 
   function projectsHTML(catId) {
     const srcs = projectSources(catId);
@@ -1342,7 +1429,11 @@
   /** 'propriétaire/projet' → GitHub ; une adresse complète (Codeberg, GitLab…) reste telle quelle. */
   const repoUrl = (r) => (/^https?:\/\//.test(r) ? r : `https://github.com/${r}`);
   const searchTokens = () => norm(state.q).split(/\s+/).filter(Boolean);
-  const matches = (tokens, text) => !tokens.length || tokens.every((t) => norm(text).includes(t));
+  const matches = (tokens, text) => {
+    if (!tokens.length) return true;
+    const hay = norm(text);
+    return tokens.every((t) => hasToken(hay, t));
+  };
 
   /** Fiche commune aux deux catalogues : f.launch = lien utilisable dans le navigateur. */
   function ficheHTML(f, i) {
@@ -1481,7 +1572,7 @@
       if (['image', 'audio', 'video'].includes(cap) && !r.mods.includes(cap)) return false;
       if (!tokens.length) return true;
       const hay = norm(`${r.name} ${r.creator} ${r.id}`);
-      return tokens.every((t) => hay.includes(t));
+      return tokens.every((t) => hasToken(hay, t));
     });
   }
 
@@ -1586,6 +1677,52 @@
       ${items.length ? `<div class="grid">${items.slice(0, limit).map((it, i) => (it.repo ? repoHTML(it, i) : cardHTML(it, i))).join('')}</div>${moreHTML(items.length - limit)}` : emptyHTML([], all.length)}`;
   }
 
+  // ───────── Alertes : page ─────────
+  const canNotify = () => 'Notification' in window;
+
+  /** Formulaire des alertes (dans l'en-tête : il n'est pas redessiné pendant qu'on tape). */
+  function alertFormHTML() {
+    let notify;
+    if (!canNotify()) {
+      notify = `<p class="al-note">${icon('info')}<span>Ce navigateur n’affiche pas de notifications : les alertes restent signalées ici et par un message en bas de l’écran.</span></p>`;
+    } else if (Notification.permission === 'denied') {
+      notify = `<p class="al-note">${icon('alert')}<span>Notifications bloquées pour ce site : autorisez-les dans les réglages du navigateur (icône à gauche de l’adresse), puis rechargez la page.</span></p>`;
+    } else {
+      const on = alerts.notify && Notification.permission === 'granted';
+      notify = `<label class="pe-check al-notify"><input type="checkbox" data-act="alert-notify"${on ? ' checked' : ''}>
+        <span><b>Notification du navigateur à chaque nouvel article</b><small>Aussi quand NEXUS est dans un onglet en arrière-plan.</small></span></label>`;
+    }
+    return `<section class="al-form">
+      <form id="alert-form" class="al-row" autocomplete="off">
+        <label class="field grow"><span>Mots surveillés</span>
+          <input name="q" maxlength="300" value="${esc(alerts.query)}" placeholder="ex. OpenAI, faille Chrome, Switch 2" spellcheck="false"></label>
+        <button type="submit" class="btn">${icon('check')}Enregistrer</button>
+      </form>
+      <p class="pe-help">Une virgule sépare deux alertes. Une alerte de plusieurs mots les veut tous, dans n’importe quel ordre ; accents et majuscules ne comptent pas. Toutes les rubriques et vos pages perso sont surveillées.</p>
+      ${notify}
+    </section>`;
+  }
+
+  function alertsHTML() {
+    const terms = splitQuery(alerts.query);
+    if (!terms.length) {
+      return `<div class="empty">${icon('bell')}<b>Aucune alerte pour l’instant</b>
+        <p>Indiquez ci-dessus les mots à surveiller : un produit, une entreprise, un jeu, une faille… Chaque article qui en parle, dans n’importe quelle rubrique, apparaîtra ici.</p></div>`;
+    }
+    const all = alertItems();
+    const per = new Map(terms.map((t) => [t, 0]));
+    for (const it of all) { const t = alertOf(it); per.set(t, (per.get(t) || 0) + 1); }
+    const items = filterItems(all, 'alerts');
+    const shown = items.slice(0, limit);
+    const empty = !items.length && state.hideRead && all.some(isRead) ? allReadHTML()
+      : all.length ? emptyHTML([], all.length)
+        : `<div class="empty">${icon('bell')}<b>Rien pour l’instant</b><p>Aucun article chargé ne parle de ces mots. Les nouveaux seront signalés dès leur parution.</p></div>`;
+    return `<div class="kw-bar al-terms">${icon('bell')}<span class="kw-label">Surveillés</span>
+        ${[...per].map(([t, n]) => `<span class="kw">${esc(t)} <b>${n}</b></span>`).join('')}</div>
+      ${countLineHTML(items, all.length)}
+      ${shown.length ? `<div class="grid ${state.view}">${shown.map(cardHTML).join('')}</div>${moreHTML(items.length - shown.length)}` : empty}`;
+  }
+
   function radarHTML() {
     const now = Date.now();
     const perCat = CATEGORIES.map((c) => ({ c, items: newsItems(c.id) }));
@@ -1603,7 +1740,7 @@
       const n = unseen(c.id);
       const rows = items.slice(0, 7).map((it) => {
         const name = it.via || SRC[it.src].name;
-        return `<a class="row${isNew(it) ? ' is-new' : ''}" href="${esc(it.link)}" target="_blank" rel="noopener noreferrer" style="--h:${hue(name)}">
+        return `<a class="row${isNew(it) ? ' is-new' : ''}${isRead(it) ? ' is-read' : ''}" data-key="${esc(it.id)}" href="${esc(it.link)}" target="_blank" rel="noopener noreferrer" style="--h:${hue(name)}">
           ${timeTag(it.date, true)}<span><span class="s">${esc(name)}</span><span class="t">${esc(it.title)}</span></span></a>`;
       }).join('');
       const srcs = newsSources(c.id);
@@ -1615,8 +1752,71 @@
         ${rows || (waiting ? '<div class="sk-row"></div>'.repeat(5) : `<div class="empty" style="margin:16px;padding:30px 16px"><p>${none}</p></div>`)}
       </section>`;
     }).join('');
+    const hot = trends(everything.filter((it) => now - it.date < 864e5));
+    const trendsHTML = hot.length ? `<section class="trends">
+        <h2>${icon('trend')}Sujets du moment<em>les plus cités dans les titres des dernières 24 h</em></h2>
+        <div class="trend-list">${hot.map((t) => `<button type="button" class="trend" data-act="trend" data-v="${esc(t.label)}" title="${t.n} articles, ${t.srcs} sources : rechercher partout">${esc(t.label)}<b>${t.n}</b></button>`).join('')}</div>
+      </section>` : '';
     return `<div class="stats">${stats.map(([label, value, color]) => `<div class="stat" style="--sc:${color}"><b>${value}</b><span>${label}</span></div>`).join('')}</div>
+      ${trendsHTML}
       <div class="panels">${panels}</div>`;
+  }
+
+  // ───────── Sujets du moment ─────────
+  // Les mots et expressions qui reviennent dans les titres de plusieurs sources : noms de produits,
+  // d'entreprises, de failles… Les mots courants (français, anglais, vocabulaire de presse) sont ignorés.
+  const TREND_STOP = new Set(`a à afin ai ainsi alors an ans après au aucun aussi autre autres aux avant avec avoir bien bon bonne c ça car ce ceci cela celle celles celui ces cet cette ceux chez ci comme comment contre d dans de déjà depuis des deux dit doit donc dont du elle elles en encore entre est et été être eux fait faire faut fin fois font ici il ils j je jour jours jusqu l la là le les leur leurs lors lui m ma mais me même mes moins mois mon n ne ni non nos notre nous on ont ou où par parce pas pendant peu peut peuvent plus pour pourquoi pourrait premier première prix qu quand que quel quelle quels quelles qui quoi s sa sans se selon sera ses si son sont sous suite sur t ta te tes toujours tous tout toute toutes très trop tu un une va vers veut via voici voilà vont vos votre vous y
+    nouveau nouvelle nouveaux nouvelles grand grande gros petit petite mieux meilleur meilleure meilleurs vrai vraie annonce annonces lance lancé lancement arrive arrivent devient enfin face monde vidéo direct test essai version mise jour sortie date retour début cas raison moment heure heures semaine année gratuit gratuite officiel officielle euros euro voici découvrez aujourd'hui demain hier
+    the and or but if of on in at to for from by with without about into over after before under between up down out off is are was were be been being has have had do does did will would can could should may might must not no yes it its this that these those they them their there here what which who whom whose why how when where all any some more most less many much now just than then too very also only even still first last next one two three get gets got make makes made says said say like vs your you we our us he she his her my me i new news update updates report reports today week year years day days time people way thing things best top big small free launch launches launched release released announces announced review deal deals watch live using use used need needs want wants see look looks show shows here's what's it's don't can't won't isn't why's how's could've you're they're we're
+    tech data game games gaming app apps online internet web site sites software hardware open source code users user company companies service services`.split(/\s+/).filter(Boolean).map(norm)); // comparés sans accents, comme les mots des titres
+  const TREND_ELISION = /^(?:l|d|qu|n|s|c|j|m|t|jusqu|lorsqu|puisqu)['’]/i;
+  let trendsMemo = { sig: '', list: [] };
+
+  /** Mots d'un titre, nettoyés : « l'IA » → « IA », « GPT-5 » et « Node.js » restent entiers. */
+  function titleWords(title) {
+    return title.replace(/’/g, "'").split(/[\s,;:!?«»"“”()[\]{}|/…]+/)
+      .map((w) => w.replace(TREND_ELISION, '').replace(/^[-.']+|[-.']+$/g, '').replace(/'s$/i, '')).filter(Boolean);
+  }
+  const trendWord = (w) => {
+    const k = norm(w);
+    if (TREND_STOP.has(k) || /^\d+$/.test(k)) return false;
+    return k.length >= 3 || /^[A-Z0-9]{2}$/.test(w); // « IA », « AI », « 5G » ; pas « de », « le »
+  };
+
+  function trends(items) {
+    const sig = `${items.length}|${items[0]?.id}|${items[items.length - 1]?.id}`;
+    if (trendsMemo.sig === sig) return trendsMemo.list;
+    const stats = new Map(); // clé normalisée → { forms, n, srcs }
+    const add = (key, label, src) => {
+      let s = stats.get(key);
+      if (!s) stats.set(key, (s = { forms: new Map(), n: 0, srcs: new Set(), parts: key.split(' ') }));
+      s.n += 1;
+      s.srcs.add(src);
+      s.forms.set(label, (s.forms.get(label) || 0) + 1);
+    };
+    for (const it of items) {
+      const src = it.via || it.src;
+      const words = titleWords(it.title);
+      const seen = new Set();
+      words.forEach((w, i) => {
+        if (!trendWord(w)) return;
+        const once = (key, label) => { if (!seen.has(key)) { seen.add(key); add(key, label, src); } };
+        once(norm(w), w);
+        const next = words[i + 1];
+        if (next && trendWord(next)) once(`${norm(w)} ${norm(next)}`, `${w} ${next}`);
+      });
+    }
+    const label = (s) => [...s.forms].sort((a, b) => b[1] - a[1] || (/[A-Z]/.test(b[0]) - /[A-Z]/.test(a[0])))[0][0];
+    const strong = [...stats.values()].filter((s) => s.n >= 3 && s.srcs.size >= 2);
+    const pairs = strong.filter((s) => s.parts.length === 2);
+    // Un mot qui n'apparaît presque que dans une expression retenue (« Formule » dans « Formule 1 ») s'efface devant elle.
+    const list = strong
+      .filter((s) => s.parts.length === 2 || !pairs.some((p) => p.parts.includes(s.parts[0]) && s.n - p.n < 2))
+      .sort((a, b) => b.n - a.n || b.srcs.size - a.srcs.size)
+      .slice(0, 14)
+      .map((s) => ({ label: label(s), n: s.n, srcs: s.srcs.size }));
+    trendsMemo = { sig, list };
+    return list;
   }
 
   const SOURCE_LABELS = { ok: 'En ligne', err: 'Erreur', blocked: 'Bloquée (CORS)', wait: 'Chargement…', idle: 'Pas encore interrogée' };
@@ -1720,7 +1920,7 @@
       ['gift', 'Gratuit', 'Pas d’abonnement, pas de publicité, pas de version premium. Chaque article renvoie vers son site d’origine (certains éditeurs ont leur propre accès payant).'],
       ['code', 'Open source', `Tout le code est ouvert sous licence ${license} : vous pouvez le lire, le modifier et héberger votre propre NEXUS.`],
       ['eye', 'Sources visibles', `${catalog.length} sources sélectionnées, dont ${solid} officielles, de presse ou de recherche. Chaque article affiche d’où il vient et le type de sa source.`],
-      ['lock', 'Vos données restent chez vous', 'Favoris, sources perso et réglages sont enregistrés dans votre navigateur. Aucun pisteur, aucune statistique de visite.'],
+      ['lock', 'Vos données restent chez vous', 'Favoris, articles lus, alertes, sources perso et réglages sont enregistrés dans votre navigateur. Aucun pisteur, aucune statistique de visite.'],
     ];
     const features = [
       'L’actualité IA, informatique et cybersécurité, en français et en anglais',
@@ -1735,6 +1935,12 @@
       'La traduction en un clic des articles en anglais',
       'L’export et l’import de vos réglages pour changer d’appareil',
       'Les nouveautés de chaque version, signalées quand une nouvelle version sort',
+      'La recherche dans tout le site en une touche (Ctrl K) : articles, projets, jeux, apps, modèles d’IA, pages et actions',
+      'Des alertes sur les mots de votre choix, avec notification du navigateur',
+      'Les sujets du moment, repérés dans les titres des dernières 24 h',
+      'Le suivi des articles lus, avec « Non lus » et « Tout marquer comme lu »',
+      'Le partage d’un article en un geste (téléphone) ou la copie de son lien',
+      'L’installation comme une application, avec les derniers articles lisibles hors ligne',
     ];
     const faq = [
       ['Pourquoi n’y a-t-il pas de compte ?', 'Parce qu’il n’en faut pas : tout ce qui vous est propre (favoris, sources, réglages) reste dans votre navigateur. Pour le retrouver ailleurs, utilisez « Exporter » puis « Importer ».'],
@@ -1743,6 +1949,8 @@
       ['Pourquoi un petit serveur ?', 'Les navigateurs interdisent à une page de lire directement les flux des autres sites. Le relais serveur.py les lit à sa place et garde une copie 20 secondes, sans rien enregistrer d’autre.'],
       ['Comment changer les sources ?', 'Page Sources : retirez une source du catalogue ou ajoutez la vôtre. Pour modifier le catalogue de tout le monde, éditez le fichier js/sources.js.'],
       ['Puis-je suivre autre chose que la tech ?', 'Oui : menu → « Créer une page ». Partez d’un modèle (politique, F1, foot, voiture…) ou d’une page vide, choisissez son icône et sa couleur, puis suivez des mots-clés dans la presse (Google Actualités) ou ajoutez vos sites. Par défaut, les sites de la page n’affichent que les articles qui parlent de vos mots-clés. La page reste dans votre navigateur.'],
+      ['Comment être prévenu quand on parle d’un sujet ?', 'Menu → « Alertes » : indiquez les mots à surveiller (un produit, une entreprise, une faille…). Chaque nouvel article qui en parle, dans n’importe quelle rubrique, est signalé par un message et, si vous l’autorisez, par une notification du navigateur, même quand NEXUS est dans un onglet en arrière-plan. NEXUS doit rester ouvert : rien n’est envoyé depuis un serveur.'],
+      ['Puis-je installer NEXUS sur mon téléphone ?', 'Oui. Sur Android (Chrome, Edge) : menu → « Installer l’application », ou l’option d’installation du navigateur. Sur iPhone (Safari) : bouton Partager → « Sur l’écran d’accueil ». NEXUS s’ouvre alors comme une application, et les derniers articles enregistrés restent lisibles sans connexion.'],
     ];
     const files = [['js/app.js', 'l’application'], ['js/sources.js', 'le catalogue des sources'], ['css/style.css', 'le style'], ['serveur.py', 'le relais'], ['CHANGELOG.md', 'le journal des versions'], ['LICENSE', 'la licence']];
     const repo = safeUrl(PROJECT.repo || '');
@@ -1785,6 +1993,7 @@
     return `<div class="seg">${options.map(([v, label], i) => `<button type="button" data-act="${act}" data-v="${v}" class="${v === current ? 'on' : ''}"${titles[i] ? ` title="${titles[i]}" aria-label="${titles[i]}"` : ''}>${label}</button>`).join('')}</div>`;
   }
 
+  const unreadToggle = () => `<button type="button" class="ctl tgl${state.hideRead ? ' on' : ''}" data-act="hide-read" aria-pressed="${state.hideRead}" title="Masquer les articles déjà ouverts">${icon('eye')}Non lus</button>`;
   const searchHTML = (placeholder) => `<label class="search">${icon('search')}<input id="q" type="search" placeholder="${esc(placeholder)}" value="${esc(state.q)}" autocomplete="off" spellcheck="false"><kbd>/</kbd></label>`;
   const backupHTML = () => `<div class="backup">
       <button type="button" class="btn ghost" data-act="export" title="Télécharger vos favoris et vos sources perso dans un fichier">${icon('download')}Exporter</button>
@@ -1823,6 +2032,7 @@
     return `<div class="toolbar">${search}
       ${seg('lang', state.lang, [['all', 'FR + EN'], ['fr', 'FR'], ['en', 'EN']])}
       ${period}${type}
+      ${unreadToggle()}
       ${seg('view', state.view, [['grid', icon('grid')], ['list', icon('rows')]], ['Vue cartes', 'Vue liste'])}
     </div>`;
   }
@@ -1907,6 +2117,10 @@
         ${seg('favsort', state.favSort, [['added', `${icon('clock')}Ajoutés récemment`], ['date', `${icon('rows')}Date de publication`]])}
         ${backupHTML()}</div>`;
     }
+    if (state.tab === 'alertes') {
+      html += `${alertFormHTML()}<div class="toolbar">${searchHTML('Rechercher dans vos alertes…')}${unreadToggle()}
+        ${seg('view', state.view, [['grid', icon('grid')], ['list', icon('rows')]], ['Vue cartes', 'Vue liste'])}</div>`;
+    }
     if (state.tab === 'sources') html += addFormHTML();
     if (state.tab === 'radar') html += '<div id="ticker" class="ticker"></div>';
     $('#head').innerHTML = html;
@@ -1975,11 +2189,15 @@
 
   let lastBody = '';
   function renderBody(enter = false) {
-    if (enter) limit = PAGE; // nouvel onglet ou nouveaux filtres : on repart des premières cartes
+    if (enter) {
+      limit = PAGE; // nouvel onglet ou nouveaux filtres : on repart des premières cartes
+      keepShown.clear(); // les articles lus pendant la visite précédente peuvent maintenant disparaître
+    }
     let html;
     if (state.tab === 'radar') html = radarHTML();
     else if (state.tab === 'sources') html = sourcesHTML();
     else if (state.tab === 'favoris') html = favoritesHTML();
+    else if (state.tab === 'alertes') html = alertsHTML();
     else if (state.tab === 'apropos') html = aboutHTML();
     else if (state.tab === 'nouveautes') {
       if (enter) { clFresh = freshVersions(); markSeen(); } // signalées pendant la visite, vues ensuite
@@ -1991,7 +2209,7 @@
     else if (state.sub === 'rank') html = boardHTML();
     else html = newsHTML(state.tab);
     if (state.tab === 'radar') updateTicker();
-    if (CAT[state.tab] && !document.hidden) {
+    if ((CAT[state.tab] || state.tab === 'alertes') && !document.hidden) {
       state.lastVisit[state.tab] = Date.now();
       persistSoon();
     }
@@ -2042,7 +2260,11 @@
           <span class="ni-ico">${icon('plus')}</span>
           <span class="ni-text"><span class="ni-label">Créer une page</span><span class="ni-hint">${pages.length ? 'Un autre sujet à suivre' : 'F1, foot, politique… le sujet de votre choix'}</span></span>
         </button>`
-      + group('Et aussi') + TABS.filter((t) => ['favoris', 'sources', 'apropos', 'nouveautes'].includes(t.id)).map(item).join('');
+      + group('Et aussi') + TABS.filter((t) => ['favoris', 'alertes', 'sources', 'apropos', 'nouveautes'].includes(t.id)).map(item).join('')
+      + (installPrompt ? `<button type="button" class="nav-item nav-add" data-act="install" style="--n:${n++}">
+          <span class="ni-ico">${icon('phone')}</span>
+          <span class="ni-text"><span class="ni-label">Installer l’application</span><span class="ni-hint">Écran d’accueil, lecture hors ligne</span></span>
+        </button>` : '');
     $('#menu-meta').innerHTML = `// ${VERSION ? `<a href="#nouveautes" title="Nouveautés de la version ${esc(VERSION)}">v${esc(VERSION)}</a> · ` : ''}${TABS.length} pages`;
     updateChrome();
   }
@@ -2083,8 +2305,8 @@
     closeMenu().then(() => { location.hash = link.dataset.tab; });
   });
 
-  // Sur tablette et téléphone, l'en-tête tient sur une ligne : Auto et la fréquence passent dans le menu.
-  const narrow = matchMedia('(max-width: 860px)');
+  // Sur petit ordinateur, tablette et téléphone, l'en-tête tient sur une ligne : Auto et la fréquence passent dans le menu.
+  const narrow = matchMedia('(max-width: 1100px)');
   function placeControls() {
     const ctl = $('#auto-ctl');
     const slot = $('#menu-auto');
@@ -2428,8 +2650,13 @@
       else el.removeAttribute('aria-current');
       const isFavTab = id === 'favoris';
       const isNews = id === 'nouveautes'; // versions sorties depuis la dernière visite, pas des articles
-      const n = isFavTab ? Object.keys(state.favs).length : isNews ? freshVersions() : CAT[id] && !selected ? unseen(id) : 0;
-      if (!isFavTab && !isNews) total += n;
+      const isAlerts = id === 'alertes'; // articles déjà comptés dans leur rubrique
+      let n = 0;
+      if (isFavTab) n = Object.keys(state.favs).length;
+      else if (isNews) n = freshVersions();
+      else if (isAlerts) n = selected ? 0 : alertItems().filter((it) => state.firstSeen[it.id] > (state.lastVisit.alertes || 0)).length;
+      else if (CAT[id] && !selected) n = unseen(id);
+      if (!isFavTab && !isNews && !isAlerts) total += n;
       const badge = el.querySelector('.badge');
       badge.hidden = !n;
       badge.classList.toggle('soft', isFavTab);
@@ -2510,19 +2737,50 @@
     const latest = fresh.reduce((a, b) => (b.date > a.date ? b : a));
     const n = fresh.length;
     toast(
-      `+${n} nouvel${n > 1 ? 's' : ''} article${n > 1 ? 's' : ''}`,
+      `+${n} ${n > 1 ? 'nouveaux articles' : 'nouvel article'}`,
       `${parts.map(([c, k]) => `${CAT[c].label} ${k}`).join(' · ')} — « ${latest.title} »`,
       () => { location.hash = parts[0][0]; },
     );
   }
 
+  /** Alerte : message en bas de l'écran ; notification du navigateur si activée et si NEXUS n'est pas affiché. */
+  function notifyAlerts(hits) {
+    const first = hits[0];
+    const term = alertOf(first);
+    const many = hits.length > 1;
+    toast(many ? `${hits.length} articles pour vos alertes` : `Alerte : ${term}`, `« ${first.title} »${many ? ` et ${hits.length - 1} autre${hits.length > 2 ? 's' : ''}` : ''}`, () => { location.hash = 'alertes'; });
+    if (!alerts.notify || !canNotify() || Notification.permission !== 'granted' || !document.hidden) return;
+    systemNotify(
+      many ? `NEXUS · ${hits.length} articles pour vos alertes` : `NEXUS · Alerte : ${term}`,
+      hits.slice(0, 3).map((it) => (many ? `• ${it.title}` : it.title)).join('\n'),
+      many ? new URL('#alertes', location.href).href : first.link,
+    );
+  }
+
+  /** Notification système : via le service worker si possible (obligatoire sur Android), sinon directement. */
+  async function systemNotify(title, body, url) {
+    const options = { body, tag: 'nexus-alert', icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', data: { url } };
+    try {
+      const reg = await navigator.serviceWorker?.getRegistration();
+      if (reg?.active) { await reg.showNotification(title, options); return; }
+      const n = new Notification(title, options);
+      n.onclick = () => { window.focus(); if (url) window.open(url, '_blank', 'noopener'); n.close(); };
+    } catch { /* notification refusée ou impossible : le message en bas de l'écran suffit */ }
+  }
+
   function showMode() {
     const mode = $('#mode');
-    mode.className = `mode ${state.relay ? 'live' : 'direct'}`;
-    mode.querySelector('span').textContent = state.relay ? (state.hosted ? 'Live · en ligne' : 'Live · relais local') : 'Mode direct';
-    mode.title = state.relay
-      ? 'Relais actif : toutes les sources sont accessibles.'
-      : 'Page ouverte sans relais : seules les sources compatibles CORS répondent. Lancez lancer.bat.';
+    const offline = !navigator.onLine;
+    mode.className = `mode ${offline ? 'offline' : state.relay ? 'live' : 'direct'}`;
+    mode.querySelector('span').textContent = offline ? 'Hors ligne' : state.relay ? (state.hosted ? 'Live · en ligne' : 'Live · relais local') : 'Mode direct';
+    mode.title = offline ? 'Pas de connexion : les derniers articles enregistrés restent consultables.'
+      : state.relay ? 'Relais actif : toutes les sources sont accessibles.'
+        : 'Page ouverte sans relais : seules les sources compatibles CORS répondent. Lancez lancer.bat.';
+    if (offline) {
+      $('#banner').innerHTML = `<div class="banner offline"><div class="banner-in">${icon('offline')}
+        <p><b>Hors ligne.</b> Voici les derniers articles enregistrés dans ce navigateur. NEXUS se remet à jour tout seul au retour du réseau.</p></div></div>`;
+      return;
+    }
     let dismissed = false;
     try { dismissed = sessionStorage.getItem('nexus.banner') === '1'; } catch { /* stockage bloqué */ }
     $('#banner').innerHTML = state.relay || dismissed ? '' : `<div class="banner"><div class="banner-in">${icon('alert')}
@@ -2570,10 +2828,15 @@
   window.addEventListener('hashchange', () => {
     closeMenu(true); // touche 1–9 menu ouvert, bouton Précédent…
     closeEditor(true);
+    closePalette();
     const before = state.tab;
     const beforeSub = state.sub;
     parseHash();
     if (state.tab !== before) state.q = '';
+    if (pendingQ !== null) { // page ouverte depuis « Rechercher partout » : la recherche suit
+      state.q = pendingQ;
+      pendingQ = null;
+    }
     const order = (id) => TABS.findIndex((t) => t.id === id);
     const subOrder = Object.keys(SUBS);
     const forward = order(state.tab) > order(before) || (state.tab === before && subOrder.indexOf(state.sub) > subOrder.indexOf(beforeSub));
@@ -2596,6 +2859,16 @@
       case 'menu-close': closeMenu(); return;
       case 'new-page': closeMenu().then(() => openEditor()); return;
       case 'edit-page': openEditor(state.tab); return;
+      case 'trend': openPalette(v); return;
+      case 'share': {
+        const it = findItem(v);
+        if (it) shareItem(it);
+        return;
+      }
+      case 'hide-read': toggleHideRead(); return;
+      case 'mark-read': markAllRead(); return;
+      case 'alert-notify': toggleAlertNotify(el); return;
+      case 'install': closeMenu(true).then(installApp); return;
       case 'page-filter': { // bandeau de la page : filtre des sites activé / coupé sans ouvrir l'éditeur
         const page = pagesRaw.find((p) => p.id === state.tab);
         if (!page) return;
@@ -2723,6 +2996,11 @@
   });
 
   document.addEventListener('submit', (e) => {
+    if (e.target.id === 'alert-form') {
+      e.preventDefault();
+      saveAlertQuery(e.target.elements.q.value);
+      return;
+    }
     if (e.target.id !== 'add-form') return;
     e.preventDefault();
     testSource(e.target);
@@ -2771,7 +3049,13 @@
   }, true);
 
   document.addEventListener('keydown', (e) => {
-    if (e.ctrlKey || e.metaKey || e.altKey || editor.open) return; // pas de raccourcis pendant l'édition d'une page
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'k') { // Ctrl K : rechercher partout
+      e.preventDefault();
+      if (palette.open) closePalette();
+      else openPalette();
+      return;
+    }
+    if (e.ctrlKey || e.metaKey || e.altKey || editor.open || palette.open) return; // pas de raccourcis pendant l'édition d'une page
     const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement?.tagName);
     if (typing) {
       if (e.key === 'Escape') document.activeElement.blur();
@@ -2789,6 +3073,309 @@
     if (document.hidden) return;
     if (state.auto && !state.loading && Date.now() >= state.nextAt) refresh();
     else { renderBody(); updateChrome(); }
+  });
+
+  // ───────── Lu, partage, alertes : actions ─────────
+  // Article ouvert (clic, clic molette) depuis une carte ou le radar : il passe en « lu ».
+  function openedFrom(e) {
+    const holder = e.target.closest('a[target="_blank"]')?.closest('.card[data-key]:not(.game), .row[data-key]');
+    if (!holder) return;
+    markRead([holder.dataset.key]);
+    holder.classList.add('is-read');
+    scheduleRender(); // compteur « non lus »
+  }
+  document.addEventListener('click', openedFrom);
+  document.addEventListener('auxclick', (e) => { if (e.button === 1) openedFrom(e); });
+
+  function toggleHideRead() {
+    state.hideRead = !state.hideRead;
+    persistSoon();
+    renderHead();
+    renderBody(true);
+    toast(state.hideRead ? 'Articles lus masqués' : 'Articles lus affichés', state.hideRead
+      ? 'Seuls les articles que vous n’avez pas encore ouverts restent affichés.'
+      : 'Les articles déjà ouverts sont de nouveau affichés, estompés.');
+  }
+
+  function markAllRead() {
+    const items = state.tab === 'alertes' ? filterItems(alertItems(), 'alerts') : filterItems(newsItems(state.tab));
+    const ids = items.filter((it) => !isRead(it)).map((it) => it.id);
+    if (!ids.length) return;
+    markRead(ids, false);
+    renderBody();
+    const s = ids.length > 1 ? 's' : '';
+    toast('Tout est lu', `${ids.length} article${s} marqué${s} comme lu${s}. Cliquez pour annuler.`, () => {
+      for (const id of ids) delete readMap[id];
+      saveRead();
+      renderBody();
+    });
+  }
+
+  /** Téléphone : menu de partage du système. Ordinateur : le lien est copié. */
+  async function shareItem(it) {
+    const data = { title: it.title, url: it.link };
+    if (navigator.share && matchMedia('(pointer: coarse)').matches) {
+      try { await navigator.share(data); return; } catch (err) { if (err.name === 'AbortError') return; }
+    }
+    try {
+      await navigator.clipboard.writeText(it.link);
+      toast('Lien copié', clip(it.title, 90));
+    } catch {
+      toast('Copie impossible', it.link);
+    }
+  }
+
+  function saveAlertQuery(text) {
+    alerts.query = splitQuery(text).join(', ');
+    saveAlerts();
+    renderHead();
+    renderBody(true);
+    updateChrome();
+    const n = alertItems().length;
+    const s = n > 1 ? 's' : '';
+    toast(alerts.query ? 'Alertes enregistrées' : 'Alertes supprimées', alerts.query
+      ? `${n} article${s} déjà chargé${s} en parle${n > 1 ? 'nt' : ''}. Les prochains seront signalés dès leur parution.`
+      : 'Plus aucun mot n’est surveillé.');
+  }
+
+  async function toggleAlertNotify(box) {
+    if (!box.checked) {
+      alerts.notify = false;
+      saveAlerts();
+      toast('Notifications coupées', 'Les alertes restent signalées dans NEXUS.');
+      return;
+    }
+    let perm = Notification.permission;
+    if (perm === 'default') perm = await Notification.requestPermission();
+    alerts.notify = perm === 'granted';
+    saveAlerts();
+    renderHead();
+    if (alerts.notify) systemNotify('NEXUS · Notifications activées', 'Vous serez prévenu des nouveaux articles qui parlent de vos alertes.', new URL('#alertes', location.href).href);
+    else toast('Notifications refusées', 'Le navigateur les a bloquées : les alertes restent signalées dans NEXUS.');
+  }
+
+  // ───────── Rechercher partout (Ctrl K) ─────────
+  // Une seule boîte pour les articles chargés (toutes rubriques et favoris), les projets, les jeux, les apps,
+  // les modèles d'IA, les pages et les actions.
+  const palette = $('#palette');
+  let plItems = [];
+  let plSel = 0;
+  let pendingQ = null; // recherche à appliquer à la page ouverte depuis la palette
+
+  const route = () => (SUBS[state.sub] ? `${state.tab}/${SUBS[state.sub]}` : state.tab);
+  /** Ouvre une page, avec une recherche déjà tapée si besoin. */
+  function goTo(hash, q = '') {
+    if (route() === hash) {
+      state.q = q;
+      go(true);
+      window.scrollTo({ top: 0 });
+      return;
+    }
+    pendingQ = q;
+    location.hash = hash;
+  }
+
+  function openArticle(it) {
+    window.open(it.link, '_blank', 'noopener');
+    markRead([it.id]);
+    scheduleRender();
+  }
+
+  /** Surligne les mots cherchés (accents et majuscules ignorés), après échappement. */
+  function highlight(text, tokens) {
+    if (!tokens.length) return esc(text);
+    let flat = '';
+    const at = []; // position dans le texte d'origine de chaque caractère de `flat`
+    for (let i = 0; i < text.length; i++) for (const c of norm(text[i])) { flat += c; at.push(i); }
+    const marked = new Array(text.length).fill(false);
+    for (const t of tokens) {
+      for (let k = flat.indexOf(t); k !== -1; k = flat.indexOf(t, k + 1)) {
+        if (t.length <= 3 && k > 0 && /[a-z0-9]/.test(flat[k - 1])) continue; // mot court : seulement en début de mot
+        for (let j = k; j < k + t.length; j++) marked[at[j]] = true;
+      }
+    }
+    let out = '';
+    let open = false;
+    for (let i = 0; i < text.length; i++) {
+      if (marked[i] !== open) { out += marked[i] ? '<mark>' : '</mark>'; open = marked[i]; }
+      out += esc(text[i]);
+    }
+    return out + (open ? '</mark>' : '');
+  }
+
+  function paletteActions() {
+    const list = [
+      { icon: 'search', title: 'Rafraîchir maintenant', sub: 'Touche R', keys: 'rafraichir actualiser synchroniser mise a jour', run: () => refresh(true) },
+      { icon: 'clock', title: state.auto ? 'Couper le rafraîchissement automatique' : 'Activer le rafraîchissement automatique', sub: 'Touche A', keys: 'auto automatique', run: () => { const a = $('#auto'); a.checked = !a.checked; a.dispatchEvent(new Event('change')); } },
+      { icon: 'eye', title: state.hideRead ? 'Afficher aussi les articles lus' : 'Masquer les articles lus', keys: 'lus non lus masquer afficher', run: toggleHideRead },
+      { icon: 'bell', title: 'Gérer mes alertes', sub: alerts.query || 'Aucun mot surveillé', keys: 'alertes notifications surveiller mots', run: () => goTo('alertes') },
+      { icon: 'plus', title: 'Créer une page perso', keys: 'page perso nouvelle sujet theme', run: () => openEditor() },
+      { icon: 'download', title: 'Exporter mes données', sub: 'Favoris, sources, pages, réglages', keys: 'export sauvegarde', run: exportData },
+      { icon: 'upload', title: 'Importer une sauvegarde', keys: 'import restaurer', run: () => $('#import-file').click() },
+      { icon: 'gift', title: 'Voir les nouveautés', sub: `Version ${VERSION}`, keys: 'nouveautes version changelog', run: () => goTo('nouveautes') },
+    ];
+    if (installPrompt) list.unshift({ icon: 'phone', title: 'Installer NEXUS comme une application', sub: 'Écran d’accueil, lecture hors ligne', keys: 'installer application pwa ecran accueil', run: installApp });
+    return list;
+  }
+
+  function paletteGroups(q) {
+    const tokens = norm(q).split(/\s+/).filter(Boolean);
+    const has = (text) => { const h = norm(text); return tokens.every((t) => hasToken(h, t)); };
+    const hl = (s) => highlight(s, tokens);
+    const groups = [];
+    const push = (label, items, total = items.length) => { if (items.length) groups.push({ label, items, total }); };
+    const action = (a) => ({ icon: a.icon, html: hl(a.title), sub: a.sub ? esc(a.sub) : '', run: a.run });
+    const article = (it) => {
+      const src = srcOf(it);
+      const cat = CAT[src.cat] || TAB.info;
+      const tag = alertOf(it) ? 'Alerte' : isNew(it) ? 'Nouveau' : isRead(it) ? 'Lu' : '';
+      return { icon: cat.icon, color: cat.color, html: hl(it.title), sub: `${esc(it.via || src.name)} · ${esc(ago(it.date))}${state.favs[it.id] ? ' · en favori' : ''}`, tag, run: () => openArticle(it) };
+    };
+    const actions = paletteActions().filter((a) => !tokens.length || has(`${a.title} ${a.keys}`));
+    const articles = dedupe([...CATEGORIES.flatMap((c) => newsItems(c.id)), ...Object.values(state.favs).filter((f) => !f.repo)])
+      .sort((a, b) => (b.date || 0) - (a.date || 0));
+    if (!tokens.length) {
+      push('Actions', actions.map(action));
+      push('Derniers articles', articles.slice(0, 8).map(article));
+      return groups;
+    }
+    push('Pages', TABS.filter((t) => has(`${t.label} ${t.long} ${MENU_HINTS[t.id] || ''}`)).slice(0, 5)
+      .map((t) => ({ icon: t.icon, color: t.color, html: hl(t.label), sub: esc(MENU_HINTS[t.id] || (t.custom ? 'Page perso' : t.long)), run: () => goTo(t.id) })));
+    const found = articles.filter((it) => has(`${it.title} ${it.summary || ''} ${srcOf(it).name} ${it.via || ''}`));
+    push('Articles', found.slice(0, 30).map(article), found.length);
+    const repos = dedupe(activeSources().filter((s) => s.kind === 'github').flatMap((s) => state.results[s.id]?.items || []))
+      .filter((it) => has(`${it.title} ${it.summary || ''} ${(it.topics || []).join(' ')}`));
+    push('Projets GitHub', repos.slice(0, 5).map((it) => ({ icon: 'code', color: CAT[SRC[it.src]?.cat]?.color, html: hl(it.title), sub: `${compact(it.stars)} étoiles${it.summary ? ` · ${esc(clip(it.summary, 90))}` : ''}`, run: () => openArticle(it) })), repos.length);
+    push('Jeux à jouer', GAMES.filter((g) => has(`${g.game} ${g.project} ${g.original}`)).slice(0, 4)
+      .map((g) => ({ icon: 'play', color: CAT.jeux?.color, html: hl(g.game), sub: esc(`${g.project} · ${g.original}`), run: () => goTo('jeux/jouer', g.game) })));
+    push('Apps à utiliser', APPS.filter((a) => has(`${a.name} ${a.original} ${a.kind}`)).slice(0, 4)
+      .map((a) => ({ icon: 'rocket', color: CAT.apps?.color, html: hl(a.name), sub: esc(a.original), run: () => goTo('apps/utiliser', a.name) })));
+    push('Modèles d’IA', state.board.rows.filter((r) => has(`${r.name} ${r.creator}`)).slice(0, 4)
+      .map((r) => ({ icon: 'trophy', color: CAT.ia?.color, html: hl(r.name), sub: esc(`${r.creator} · index d’intelligence ${r.intel}`), run: () => goTo('ia/classement', r.name) })));
+    push('Actions', actions.slice(0, 4).map(action));
+    return groups;
+  }
+
+  function renderPalette() {
+    const input = $('#pl-q');
+    const groups = paletteGroups(input.value);
+    plItems = groups.flatMap((g) => g.items);
+    plSel = Math.max(0, Math.min(plSel, plItems.length - 1));
+    let k = 0;
+    $('#pl-list').innerHTML = plItems.length ? groups.map((g) => `<div class="pl-group" role="group" aria-label="${esc(g.label)}">
+        <p class="pl-h">${esc(g.label)}${g.total > g.items.length ? `<em>${g.items.length} sur ${g.total}</em>` : ''}</p>
+        ${g.items.map((r) => {
+          const i = k++;
+          return `<button type="button" class="pl-item${i === plSel ? ' on' : ''}" id="pl-${i}" data-i="${i}" role="option" aria-selected="${i === plSel}" tabindex="-1"${r.color ? ` style="--pc:${r.color}"` : ''}>
+            <span class="pl-ico">${icon(r.icon)}</span><span class="pl-text"><b>${r.html}</b>${r.sub ? `<small>${r.sub}</small>` : ''}</span>
+            ${r.tag ? `<span class="pl-tag">${r.tag}</span>` : ''}<span class="pl-go">${icon('enter')}</span></button>`;
+        }).join('')}</div>`).join('')
+      : `<p class="pl-empty">${icon('search')}<span>Rien ne correspond à « ${esc(input.value)} » dans les articles chargés, les pages et les actions.</span></p>`;
+    if (plItems.length) input.setAttribute('aria-activedescendant', `pl-${plSel}`);
+    else input.removeAttribute('aria-activedescendant');
+  }
+
+  function selectPalette(i, scroll = true) {
+    if (!plItems.length) return;
+    plSel = (i + plItems.length) % plItems.length; // ↓ sur le dernier revient au premier
+    for (const b of palette.querySelectorAll('.pl-item')) {
+      const on = Number(b.dataset.i) === plSel;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-selected', on);
+    }
+    if (scroll) $(`#pl-${plSel}`)?.scrollIntoView({ block: 'nearest' });
+    $('#pl-q').setAttribute('aria-activedescendant', `pl-${plSel}`);
+  }
+
+  function runPalette(i) {
+    const r = plItems[i];
+    if (!r) return;
+    closePalette();
+    r.run();
+  }
+
+  function openPalette(q = '') {
+    if (editor.open) return;
+    closeMenu(true);
+    if (!palette.firstElementChild) {
+      palette.innerHTML = `<div class="pl-box">
+        <label class="pl-search">${icon('search')}<input id="pl-q" type="search" placeholder="Rechercher un article, une page, un jeu, une action…" autocomplete="off" spellcheck="false"
+          role="combobox" aria-expanded="true" aria-controls="pl-list" aria-autocomplete="list" aria-label="Rechercher partout"><kbd>Échap</kbd></label>
+        <div id="pl-list" class="pl-list" role="listbox" aria-label="Résultats"></div>
+        <p class="pl-foot"><span><kbd>↑</kbd><kbd>↓</kbd> choisir</span><span><kbd>Entrée</kbd> ouvrir</span><span><kbd>Ctrl</kbd><kbd>K</kbd> ouvrir / fermer</span></p>
+      </div>`;
+    }
+    const input = $('#pl-q');
+    input.value = q;
+    plSel = 0;
+    renderPalette();
+    if (!palette.open) {
+      palette.showModal();
+      document.documentElement.classList.add('modal-open');
+    }
+    input.focus();
+    input.select();
+  }
+
+  function closePalette() {
+    if (palette.open) palette.close();
+  }
+
+  // La fermeture arrive après coup : on ne débloque pas le défilement si une autre fenêtre vient de s'ouvrir.
+  palette.addEventListener('close', () => { if (!editor.open) document.documentElement.classList.remove('modal-open'); });
+  palette.addEventListener('input', (e) => {
+    if (e.target.id !== 'pl-q') return;
+    plSel = 0;
+    renderPalette();
+  });
+  palette.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { // sinon le champ de recherche s'efface d'abord, et il faut une seconde fois Échap
+      e.preventDefault();
+      closePalette();
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      selectPalette(plSel + (e.key === 'ArrowDown' ? 1 : -1));
+    } else if (e.key === 'Enter' && e.target.id === 'pl-q') {
+      e.preventDefault();
+      runPalette(plSel);
+    }
+  });
+  palette.addEventListener('click', (e) => {
+    if (e.target === palette) { closePalette(); return; } // clic sur le voile
+    const item = e.target.closest('.pl-item');
+    if (item) runPalette(Number(item.dataset.i));
+  });
+  palette.addEventListener('pointermove', (e) => {
+    const item = e.target.closest('.pl-item');
+    if (item && Number(item.dataset.i) !== plSel) selectPalette(Number(item.dataset.i), false);
+  });
+
+  // ───────── Application installable, hors ligne ─────────
+  let installPrompt = null; // proposé par le navigateur quand NEXUS peut être installé
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault(); // pas de bandeau automatique : l'installation se propose dans le menu
+    installPrompt = e;
+    buildMenu();
+  });
+  window.addEventListener('appinstalled', () => {
+    installPrompt = null;
+    buildMenu();
+    toast('NEXUS installé', 'Retrouvez-le sur votre écran d’accueil ou parmi vos applications.');
+  });
+  async function installApp() {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    await installPrompt.userChoice.catch(() => null);
+    installPrompt = null;
+    buildMenu();
+  }
+  window.addEventListener('offline', () => { showMode(); updateChrome(); });
+  window.addEventListener('online', async () => {
+    const relay = await detectRelay();
+    state.relay = !!relay;
+    state.hosted = !!relay?.hosted;
+    showMode();
+    refresh();
   });
 
   // ───────── Démarrage ─────────
@@ -2811,6 +3398,7 @@
       persistSoon();
     });
     $('#refresh').addEventListener('click', () => refresh(true));
+    $('#search-btn').addEventListener('click', () => openPalette());
   }
 
   async function init() {
@@ -2833,6 +3421,8 @@
       resizeTimer = setTimeout(() => syncPills(), 120);
     });
     document.fonts?.ready.then(() => syncPills());
+    // Application installable et lecture hors ligne (sw.js) : seulement quand la page est servie en http(s).
+    if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
     const relay = await detectRelay();
     state.relay = !!relay;
     state.hosted = !!relay?.hosted;

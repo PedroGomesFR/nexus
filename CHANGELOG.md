@@ -9,6 +9,24 @@ le badge de version du README.
 
 > Les versions 1.3 à 1.8 ont été numérotées après coup, d'après l'historique Git.
 
+## [2.0] · 16 octobre 2026 · Recherche partout, alertes, lu / non lu, application
+
+### Nouveau
+- Rechercher partout (Ctrl K ou la loupe en haut) : articles de toutes les rubriques et favoris, projets GitHub, jeux, apps, modèles d'IA, pages et actions, avec les mots trouvés surlignés.
+- Alertes : des mots surveillés sur tout le site. Chaque nouvel article qui en parle est signalé, marqué d'une étiquette sur sa carte et rassemblé dans la page Alertes ; notification du navigateur en option.
+- Sujets du moment sur le Radar : les noms les plus cités dans les titres des dernières 24 h, par plusieurs sources ; un clic les cherche partout.
+- Lu / non lu : un article ouvert s'estompe. Bouton « Non lus » pour masquer ceux déjà lus, et « Tout marquer comme lu » (annulable).
+- Partager un article : menu de partage du téléphone, ou lien copié sur ordinateur.
+- NEXUS s'installe comme une application (Android, iPhone, ordinateur) et reste lisible hors ligne avec les derniers articles enregistrés.
+
+### Amélioré
+- Démarrage immédiat : les polices ne bloquent plus l'affichage quand Google Fonts est lent ou injoignable.
+- En-tête toujours sur une ligne, de 320 à 2560 px ; sur petit écran, Auto et la fréquence passent dans le menu dès 1100 px.
+- Recherche plus précise : un mot court ne trouve que les mots qui commencent ainsi (« IA » ne trouve plus « fiabilité »).
+
+### Corrigé
+- Message des nouveaux articles : « +12 nouveaux articles » au lieu de « nouvels ». Relais local plus robuste quand beaucoup de fichiers sont demandés d'un coup.
+
 ## [1.10] · 14 octobre 2026 · Les pages perso suivent leurs mots-clés
 
 ### Nouveau
